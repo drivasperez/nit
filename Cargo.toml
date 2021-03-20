@@ -1,0 +1,14 @@
+[package]
+name = "nit"
+version = "0.1.0"
+authors = ["Daniel Rivas Perez <daniel.rivas@hey.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+structopt = "0.3.21"
+anyhow = "1.0.38"
+sha1 = "0.6.0"
+flate2 = "1.0.20"
+rand = "0.8.3"
