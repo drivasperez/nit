@@ -57,7 +57,7 @@ impl Database {
         content.extend_from_slice(object.object_type().as_ascii());
         content.extend_from_slice(b" ");
         content.extend_from_slice(&data.len().to_string().as_bytes());
-        content.extend_from_slice(b" \0#");
+        content.extend_from_slice(b" \0");
         content.extend_from_slice(data);
 
         let hash = Sha1::from(&content);
