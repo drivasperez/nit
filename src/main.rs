@@ -1,5 +1,5 @@
 use anyhow::Context;
-use nit::{Blob, Database, Workspace};
+use nit::{Database, Object, ObjectKind, Workspace};
 use std::fs;
 use std::path::Path;
 use structopt::StructOpt;
@@ -32,7 +32,7 @@ fn main() -> anyhow::Result<()> {
                 let data = ws
                     .read_file(&path)
                     .with_context(|| format!("Couldn't load data from {:?}", &path))?;
-                let mut blob = Blob::new(data);
+                let mut blob = Object::new(ObjectKind::Blob, data);
                 db.store(&mut blob)
                     .with_context(|| "Could not store blob")?;
             }

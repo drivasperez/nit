@@ -1,8 +1,8 @@
 use anyhow::Context;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-use std::path::Path;
-use std::path::PathBuf;
+use std::{fmt::Display, path::PathBuf};
+use std::{io, path::Path};
 
 use std::fs;
 use std::fs::File;
@@ -51,10 +51,10 @@ impl Database {
         }
     }
 
-    pub fn store<S: Storable>(&self, object: &mut S) -> anyhow::Result<()> {
+    pub fn store(&self, object: &mut Object) -> anyhow::Result<()> {
         let mut content = Vec::new();
         let data = object.to_bytestr();
-        content.extend_from_slice(object.object_type().as_ascii());
+        content.extend_from_slice(object.kind().as_string().as_bytes());
         content.extend_from_slice(b" ");
         content.extend_from_slice(&data.len().to_string().as_bytes());
         content.extend_from_slice(b" \0");
@@ -83,7 +83,12 @@ impl Database {
         let temp_path = dirname.join(Database::generate_temp_name());
 
         let file = File::create(&temp_path)
-            .or_else(|_| fs::create_dir_all(dirname).and_then(|_| File::create(&temp_path)))
+            .or_else(|e| match e.kind() {
+                io::ErrorKind::NotFound => {
+                    fs::create_dir_all(dirname).and_then(|_| File::create(&temp_path))
+                }
+                _ => Err(e),
+            })
             .context("Couldn't create file to write to")?;
         let mut encoder = DeflateEncoder::new(file, Compression::default());
 
@@ -103,32 +108,44 @@ impl Database {
     }
 }
 
-pub enum ObjectType {
+#[derive(Copy, Clone, Debug)]
+pub enum ObjectKind {
     Blob,
+    Tree,
 }
 
-impl ObjectType {
-    pub fn as_ascii(&self) -> &'static [u8] {
+impl ObjectKind {
+    pub fn as_string(&self) -> String {
+        format!("{}", self)
+    }
+}
+
+impl Display for ObjectKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Blob => b"blob",
+            Self::Blob => write!(f, "blob"),
+            Self::Tree => write!(f, "tree"),
         }
     }
 }
-pub trait Storable {
-    fn object_type(&self) -> ObjectType;
-    fn to_bytestr(&self) -> &[u8];
-    fn set_oid(&mut self, oid: [u8; 20]);
-    fn oid(&self) -> Option<&[u8; 20]>;
-}
 
-pub struct Blob {
+pub struct Object {
     oid: Option<[u8; 20]>,
     data: Vec<u8>,
+    kind: ObjectKind,
 }
 
-impl Storable for Blob {
-    fn object_type(&self) -> ObjectType {
-        ObjectType::Blob
+impl Object {
+    pub fn new(kind: ObjectKind, data: Vec<u8>) -> Self {
+        Self {
+            data,
+            oid: None,
+            kind,
+        }
+    }
+
+    fn kind(&self) -> ObjectKind {
+        ObjectKind::Blob
     }
 
     fn to_bytestr(&self) -> &[u8] {
@@ -138,14 +155,9 @@ impl Storable for Blob {
     fn set_oid(&mut self, oid: [u8; 20]) {
         self.oid = Some(oid);
     }
+
     fn oid(&self) -> Option<&[u8; 20]> {
         self.oid.as_ref()
-    }
-}
-
-impl Blob {
-    pub fn new(data: Vec<u8>) -> Self {
-        Self { data, oid: None }
     }
 }
 
