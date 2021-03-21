@@ -1,5 +1,6 @@
 use anyhow::Context;
-use nit::{Database, Object, ObjectKind, Workspace};
+use nit::{database::Database, Tree};
+use nit::{Blob, Entry, Workspace};
 use std::fs;
 use std::path::Path;
 use structopt::StructOpt;
@@ -28,14 +29,25 @@ fn main() -> anyhow::Result<()> {
             let ws = Workspace::new(root_path);
             let db = Database::new(db_path);
 
-            for path in ws.list_files()? {
-                let data = ws
-                    .read_file(&path)
-                    .with_context(|| format!("Couldn't load data from {:?}", &path))?;
-                let mut blob = Object::new(ObjectKind::Blob, data);
-                db.store(&mut blob)
-                    .with_context(|| "Could not store blob")?;
-            }
+            let entries = ws
+                .list_files()?
+                .iter()
+                .map(|path| {
+                    let data = ws
+                        .read_file(&path)
+                        .with_context(|| format!("Couldn't load data from {:?}", &path))?;
+                    let mut blob = Blob::new(data);
+                    db.store(&mut blob)
+                        .with_context(|| "Could not store blob")?;
+
+                    Ok(Entry::new(path, blob.oid().unwrap().clone()))
+                })
+                .collect::<anyhow::Result<Vec<Entry>>>()?;
+
+            let mut tree = Tree::new(entries);
+            db.store(&mut tree)?;
+
+            println!("tree: {}", tree.oid().unwrap());
         }
     };
 
