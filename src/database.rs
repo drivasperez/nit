@@ -56,7 +56,7 @@ impl Database {
         content.extend_from_slice(object.kind().as_bytes());
         content.extend_from_slice(b" ");
         content.extend_from_slice(&data.len().to_string().as_bytes());
-        content.extend_from_slice(b" \0");
+        content.extend_from_slice(b"\0");
         content.extend_from_slice(&data);
 
         let hash = Sha1::digest(&content);
@@ -71,7 +71,7 @@ impl Database {
     fn write_object(&self, oid: &Oid, content: &[u8]) -> anyhow::Result<()> {
         let hash = oid.as_str()?;
         let dir = &hash[0..2];
-        let obj = &hash[3..];
+        let obj = &hash[2..];
 
         let object_path = self.pathname.join(dir).join(obj);
 
