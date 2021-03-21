@@ -116,7 +116,7 @@ impl Object for Tree {
                 bytes.extend_from_slice(b" ");
                 bytes.extend_from_slice(entry.name.to_string_lossy().as_bytes());
                 bytes.extend_from_slice(b"\0");
-                bytes.extend_from_slice(entry.oid.bytes());
+                bytes.extend_from_slice(&entry.oid.bytes());
                 bytes
             })
             .collect();

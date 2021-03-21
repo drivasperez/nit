@@ -9,24 +9,24 @@ use std::{
 use anyhow::Context;
 use flate2::{write::DeflateEncoder, Compression};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use sha1::Sha1;
+use sha1::{Digest, Sha1};
 
 #[derive(Debug, Clone)]
-pub struct Oid([u8; 20]);
+pub struct Oid(Digest);
 
 impl Oid {
-    pub fn as_str(&self) -> anyhow::Result<String> {
-        bytes_to_hex_string(&self.0)
+    pub fn as_str(&self) -> String {
+        format!("{}", self.0)
     }
 
-    pub fn bytes(&self) -> &[u8; 20] {
-        &self.0
+    pub fn bytes(&self) -> [u8; 20] {
+        self.0.bytes()
     }
 }
 
 impl Display for Oid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = bytes_to_hex_string(&self.0).unwrap_or_else(|_| String::from("[invalid Oid]"));
+        let s = self.as_str();
         write!(f, "{}", s)
     }
 }
@@ -58,7 +58,7 @@ impl Database {
         content.extend_from_slice(&data);
 
         let hash = Sha1::from(&content);
-        let oid = Oid(hash.digest().bytes());
+        let oid = Oid(hash.digest());
         self.write_object(&oid, &content)
             .with_context(|| format!("Couldn't write object with hash {:?}", &oid))?;
         object.set_oid(oid);
@@ -67,7 +67,7 @@ impl Database {
     }
 
     fn write_object(&self, oid: &Oid, content: &[u8]) -> anyhow::Result<()> {
-        let hash = oid.as_str()?;
+        let hash = oid.as_str();
         let dir = &hash[0..2];
         let obj = &hash[3..];
 
@@ -87,7 +87,7 @@ impl Database {
                 _ => Err(e),
             })
             .context("Couldn't create file to write to")?;
-        let mut encoder = DeflateEncoder::new(file, Compression::default());
+        let mut encoder = DeflateEncoder::new(file, Compression::fast());
 
         encoder
             .write_all(content)
@@ -103,14 +103,4 @@ impl Database {
         let blah: Vec<u8> = thread_rng().sample_iter(&Alphanumeric).take(6).collect();
         String::from_utf8(blah).unwrap()
     }
-}
-
-fn bytes_to_hex_string(bytes: &[u8]) -> anyhow::Result<String> {
-    use core::fmt::Write;
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        write!(s, "{:02x}", byte)?;
-    }
-
-    Ok(s)
 }
