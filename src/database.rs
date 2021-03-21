@@ -12,9 +12,9 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use sha1::{Digest, Sha1};
 
 #[derive(Debug, Clone)]
-pub struct Oid([u8; 20]);
+pub struct ObjectId([u8; 20]);
 
-impl Oid {
+impl ObjectId {
     pub fn as_str(&self) -> anyhow::Result<String> {
         bytes_to_hex_string(&self.0)
     }
@@ -24,7 +24,7 @@ impl Oid {
     }
 }
 
-impl Display for Oid {
+impl Display for ObjectId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = self
             .as_str()
@@ -36,7 +36,7 @@ impl Display for Oid {
 pub trait Object {
     fn data(&self) -> Cow<[u8]>;
     fn kind(&self) -> &str;
-    fn set_oid(&mut self, oid: Oid);
+    fn set_oid(&mut self, oid: ObjectId);
 }
 
 pub struct Database {
@@ -60,7 +60,7 @@ impl Database {
         content.extend_from_slice(&data);
 
         let hash = Sha1::digest(&content);
-        let oid = Oid(hash.into());
+        let oid = ObjectId(hash.into());
         self.write_object(&oid, &content)
             .with_context(|| format!("Couldn't write object with hash {:?}", &oid))?;
         object.set_oid(oid);
@@ -68,7 +68,7 @@ impl Database {
         Ok(())
     }
 
-    fn write_object(&self, oid: &Oid, content: &[u8]) -> anyhow::Result<()> {
+    fn write_object(&self, oid: &ObjectId, content: &[u8]) -> anyhow::Result<()> {
         let hash = oid.as_str()?;
         let dir = &hash[0..2];
         let obj = &hash[2..];

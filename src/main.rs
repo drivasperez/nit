@@ -1,8 +1,10 @@
 use anyhow::Context;
-use nit::{database::Database, Tree};
+use chrono::Utc;
+use nit::{database::Database, Author, Commit, Tree};
 use nit::{Blob, Entry, Workspace};
 use std::fs;
 use std::path::Path;
+use std::{env, io::Read};
 use structopt::StructOpt;
 
 fn main() -> anyhow::Result<()> {
@@ -47,7 +49,19 @@ fn main() -> anyhow::Result<()> {
             let mut tree = Tree::new(entries);
             db.store(&mut tree)?;
 
-            println!("tree: {}", tree.oid().unwrap());
+            let name = env::var("GIT_AUTHOR_NAME")
+                .context("Could not load GIT_AUTHOR_NAME environment variable")?;
+            let email = env::var("GIT_AUTHOR_EMAIL")
+                .context("Could not load GIT_AUTHOR_EMAIL environment variable")?;
+
+            let author = Author::new(name, email, Utc::now());
+
+            let mut msg = Vec::new();
+            std::io::stdin().read_to_end(&mut msg)?;
+            let msg = String::from_utf8(msg)?;
+
+            let mut commit = Commit::new(tree.oid().unwrap().clone(), author, msg);
+            db.store(&mut commit)?;
         }
     };
 

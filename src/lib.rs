@@ -1,5 +1,6 @@
-use database::{Object, Oid};
-use std::{borrow::Cow, os::unix::prelude::OsStrExt, path::Path};
+use chrono::{DateTime, Utc};
+use database::{Object, ObjectId};
+use std::{borrow::Cow, fmt::Display, os::unix::prelude::OsStrExt, path::Path};
 use std::{ffi::OsString, path::PathBuf};
 
 pub mod database;
@@ -34,7 +35,7 @@ impl Workspace {
 }
 
 pub struct Blob {
-    oid: Option<Oid>,
+    oid: Option<ObjectId>,
     data: Vec<u8>,
 }
 
@@ -47,11 +48,11 @@ impl Blob {
         &self.data
     }
 
-    pub fn set_oid(&mut self, oid: Oid) {
+    pub fn set_oid(&mut self, oid: ObjectId) {
         self.oid = Some(oid);
     }
 
-    pub fn oid(&self) -> Option<&Oid> {
+    pub fn oid(&self) -> Option<&ObjectId> {
         self.oid.as_ref()
     }
 }
@@ -65,7 +66,7 @@ impl Object for Blob {
         "blob"
     }
 
-    fn set_oid(&mut self, oid: Oid) {
+    fn set_oid(&mut self, oid: ObjectId) {
         self.oid = Some(oid);
     }
 }
@@ -73,11 +74,11 @@ impl Object for Blob {
 #[derive(Debug)]
 pub struct Entry {
     name: OsString,
-    oid: Oid,
+    oid: ObjectId,
 }
 
 impl Entry {
-    pub fn new(path: &PathBuf, oid: Oid) -> Self {
+    pub fn new(path: &PathBuf, oid: ObjectId) -> Self {
         let name = path.file_name().unwrap().to_owned();
         Self { name, oid }
     }
@@ -85,7 +86,7 @@ impl Entry {
 
 #[derive(Debug)]
 pub struct Tree {
-    oid: Option<Oid>,
+    oid: Option<ObjectId>,
     entries: Vec<Entry>,
 }
 
@@ -96,7 +97,7 @@ impl Tree {
         Self { entries, oid: None }
     }
 
-    pub fn oid(&self) -> Option<&Oid> {
+    pub fn oid(&self) -> Option<&ObjectId> {
         self.oid.as_ref()
     }
 }
@@ -125,7 +126,69 @@ impl Object for Tree {
         "tree"
     }
 
-    fn set_oid(&mut self, oid: Oid) {
+    fn set_oid(&mut self, oid: ObjectId) {
+        self.oid = Some(oid);
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Author {
+    name: String,
+    email: String,
+    time: DateTime<Utc>,
+}
+
+impl Author {
+    pub fn new(name: String, email: String, time: DateTime<Utc>) -> Self {
+        Self { name, email, time }
+    }
+}
+
+impl Display for Author {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} <{}> {}",
+            self.name,
+            self.email,
+            self.time.format("%s %z")
+        )
+    }
+}
+
+pub struct Commit {
+    author: Author,
+    message: String,
+    tree: ObjectId,
+    oid: Option<ObjectId>,
+}
+
+impl Commit {
+    pub fn new(tree_oid: ObjectId, author: Author, message: String) -> Self {
+        Self {
+            author,
+            tree: tree_oid,
+            message,
+            oid: None,
+        }
+    }
+}
+
+impl Object for Commit {
+    fn data(&self) -> Cow<[u8]> {
+        let data = format!(
+            "tree {}\nauthor {}\ncommitter {}\n\n{}",
+            self.tree, self.author, self.author, self.message
+        );
+
+        Cow::Owned(data.into_bytes())
+    }
+
+    fn kind(&self) -> &str {
+        "commit"
+    }
+
+    fn set_oid(&mut self, oid: ObjectId) {
         self.oid = Some(oid);
     }
 }
