@@ -1,6 +1,6 @@
 use database::{Object, Oid};
-use std::path::PathBuf;
-use std::{borrow::Cow, path::Path};
+use std::{borrow::Cow, os::unix::prelude::OsStrExt, path::Path};
+use std::{ffi::OsString, path::PathBuf};
 
 pub mod database;
 
@@ -72,16 +72,14 @@ impl Object for Blob {
 
 #[derive(Debug)]
 pub struct Entry {
-    name: PathBuf,
+    name: OsString,
     oid: Oid,
 }
 
 impl Entry {
-    pub fn new<P: Into<PathBuf>>(path: P, oid: Oid) -> Self {
-        Self {
-            name: path.into(),
-            oid,
-        }
+    pub fn new(path: &PathBuf, oid: Oid) -> Self {
+        let name = path.file_name().unwrap().to_owned();
+        Self { name, oid }
     }
 }
 
@@ -103,24 +101,24 @@ impl Tree {
     }
 }
 
-const MODE: &str = "100644";
+const MODE: &[u8] = b"100644";
 
 impl Object for Tree {
     fn data(&self) -> Cow<[u8]> {
-        let strs: Vec<u8> = self
+        let data: Vec<u8> = self
             .entries
             .iter()
             .flat_map(|entry| {
                 let mut bytes = Vec::new();
-                bytes.extend_from_slice(MODE.as_bytes());
+                bytes.extend_from_slice(MODE);
                 bytes.extend_from_slice(b" ");
-                bytes.extend_from_slice(entry.name.to_string_lossy().as_bytes());
-                bytes.extend_from_slice(b"\0");
-                bytes.extend_from_slice(&entry.oid.bytes().clone());
+                bytes.extend_from_slice(entry.name.as_bytes());
+                bytes.extend_from_slice(&['\0' as u8]);
+                bytes.extend_from_slice(entry.oid.bytes());
                 bytes
             })
             .collect();
-        Cow::Owned(strs)
+        Cow::Owned(data)
     }
 
     fn kind(&self) -> &str {
