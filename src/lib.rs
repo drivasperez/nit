@@ -4,6 +4,8 @@ use std::{borrow::Cow, fmt::Display, os::unix::prelude::OsStrExt, path::Path};
 use std::{ffi::OsString, path::PathBuf};
 
 pub mod database;
+pub mod lockfile;
+pub mod refs;
 
 pub struct Workspace {
     pathname: PathBuf,
@@ -161,11 +163,13 @@ pub struct Commit {
     message: String,
     tree: ObjectId,
     oid: Option<ObjectId>,
+    parent: Option<String>,
 }
 
 impl Commit {
-    pub fn new(tree_oid: ObjectId, author: Author, message: String) -> Self {
+    pub fn new(parent: Option<&str>, tree_oid: ObjectId, author: Author, message: String) -> Self {
         Self {
+            parent: parent.map(|s| s.to_owned()),
             author,
             tree: tree_oid,
             message,
@@ -184,12 +188,17 @@ impl Commit {
 
 impl Object for Commit {
     fn data(&self) -> Cow<[u8]> {
-        let data = format!(
-            "tree {}\nauthor {}\ncommitter {}\n\n{}",
-            self.tree, self.author, self.author, self.message
-        );
+        let mut data = Vec::new();
+        data.push(format!("tree {}", self.tree));
+        if let Some(p) = &self.parent {
+            data.push(format!("parent {}", p));
+        }
+        data.push(format!("author {}", self.author));
+        data.push(format!("committer {}", self.tree));
+        data.push(String::from("\n"));
+        data.push(self.message.to_owned());
 
-        Cow::Owned(data.into_bytes())
+        Cow::Owned(data.join("\n").into_bytes())
     }
 
     fn kind(&self) -> &str {

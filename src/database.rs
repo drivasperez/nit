@@ -75,6 +75,10 @@ impl Database {
 
         let object_path = self.pathname.join(dir).join(obj);
 
+        if object_path.exists() {
+            return Ok(());
+        }
+
         let dirname = object_path
             .parent()
             .with_context(|| format!("Couldn't get directory from {:?}", object_path))?;

@@ -1,6 +1,6 @@
 use anyhow::Context;
 use chrono::Utc;
-use nit::{database::Database, Author, Commit, Tree};
+use nit::{database::Database, refs::Refs, Author, Commit, Tree};
 use nit::{Blob, Entry, Workspace};
 use std::fs;
 use std::path::Path;
@@ -30,6 +30,7 @@ fn main() -> anyhow::Result<()> {
 
             let ws = Workspace::new(root_path);
             let db = Database::new(db_path);
+            let refs = Refs::new(&git_path);
 
             let entries = ws
                 .list_files()?
@@ -49,6 +50,7 @@ fn main() -> anyhow::Result<()> {
             let mut tree = Tree::new(entries);
             db.store(&mut tree)?;
 
+            let parent = refs.read_head();
             let name = env::var("GIT_AUTHOR_NAME")
                 .context("Could not load GIT_AUTHOR_NAME environment variable")?;
             let email = env::var("GIT_AUTHOR_EMAIL")
@@ -60,13 +62,20 @@ fn main() -> anyhow::Result<()> {
             std::io::stdin().read_to_end(&mut msg)?;
             let msg = String::from_utf8(msg)?;
 
-            let mut commit = Commit::new(tree.oid().unwrap().clone(), author, msg);
+            let mut commit =
+                Commit::new(parent.as_deref(), tree.oid().unwrap().clone(), author, msg);
             db.store(&mut commit)?;
 
-            fs::write(git_path.join("HEAD"), commit.oid().unwrap().as_str()?)?;
+            refs.update_head(commit.oid().unwrap())?;
+
+            let root_msg = match parent {
+                Some(_) => "(root-commit) ",
+                None => "",
+            };
 
             println!(
-                "[(root-commit) {}] {}",
+                "[{}{}] {}",
+                root_msg,
                 commit.oid().unwrap(),
                 commit.message().lines().next().unwrap_or("")
             );
