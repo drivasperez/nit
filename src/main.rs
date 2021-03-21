@@ -62,6 +62,14 @@ fn main() -> anyhow::Result<()> {
 
             let mut commit = Commit::new(tree.oid().unwrap().clone(), author, msg);
             db.store(&mut commit)?;
+
+            fs::write(git_path.join("HEAD"), commit.oid().unwrap().as_str()?)?;
+
+            println!(
+                "[(root-commit) {}] {}",
+                commit.oid().unwrap(),
+                commit.message().lines().next().unwrap_or("")
+            );
         }
     };
 

@@ -172,6 +172,14 @@ impl Commit {
             oid: None,
         }
     }
+
+    pub fn oid(&self) -> Option<&ObjectId> {
+        self.oid.as_ref()
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
 }
 
 impl Object for Commit {

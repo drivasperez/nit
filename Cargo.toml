@@ -10,6 +10,6 @@ edition = "2018"
 structopt = "0.3.21"
 anyhow = "1.0.38"
 sha-1 = "0.9.4"
-flate2 = "1.0.20"
+flate2 = { version = "1.0.20", features = ["zlib"] }
 rand = "0.8.3"
 chrono = "0.4.19"

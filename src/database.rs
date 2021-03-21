@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::Context;
-use flate2::{write::DeflateEncoder, Compression};
+use flate2::{write::ZlibEncoder, Compression};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use sha1::{Digest, Sha1};
 
@@ -89,7 +89,7 @@ impl Database {
                 _ => Err(e),
             })
             .context("Couldn't create file to write to")?;
-        let mut encoder = DeflateEncoder::new(file, Compression::fast());
+        let mut encoder = ZlibEncoder::new(file, Compression::fast());
 
         encoder
             .write_all(content)
