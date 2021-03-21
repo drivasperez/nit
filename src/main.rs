@@ -43,7 +43,9 @@ fn main() -> anyhow::Result<()> {
                     db.store(&mut blob)
                         .with_context(|| "Could not store blob")?;
 
-                    Ok(Entry::new(path, blob.oid().unwrap().clone()))
+                    let mode = ws.stat_file(&path)?;
+
+                    Ok(Entry::new(path, blob.oid().unwrap().clone(), mode))
                 })
                 .collect::<anyhow::Result<Vec<Entry>>>()?;
 
