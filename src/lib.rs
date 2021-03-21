@@ -228,7 +228,7 @@ impl Object for Commit {
             data.push(format!("parent {}", p));
         }
         data.push(format!("author {}", self.author));
-        data.push(format!("committer {}", self.tree));
+        data.push(format!("committer {}", self.author));
         data.push(String::from("\n"));
         data.push(self.message.to_owned());
 
