@@ -1,3 +1,5 @@
+use crate::utils::add_extension;
+use anyhow::Context;
 use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
 use std::{
@@ -31,7 +33,7 @@ impl Lockfile {
     pub fn new(path: &Path) -> Self {
         let file_path = path.to_owned();
         let mut lock_path = path.to_owned();
-        lock_path.push(".lock");
+        add_extension(&mut lock_path, "lock");
 
         Self {
             lock: None,
@@ -40,53 +42,55 @@ impl Lockfile {
         }
     }
 
-    pub fn hold_for_update(&mut self) -> Result<bool, LockfileError> {
+    pub fn hold_for_update(&mut self) -> anyhow::Result<bool> {
         if self.lock.is_none() {
+            println!(
+                "Opening lock on {:?}: {:?}",
+                &self.file_path, &self.lock_path
+            );
             let f = OpenOptions::new()
                 .read(true)
                 .write(true)
                 .create_new(true)
-                .open(&self.lock_path)
-                .map_err(|e| match e.kind() {
-                    ErrorKind::NotFound => (LockfileError::MissingParent),
-                    ErrorKind::PermissionDenied => (LockfileError::NoPermission),
-                    e => LockfileError::UnexpectedError(e),
-                });
+                .open(&self.lock_path);
+            // .map_err(|e| match e.kind() {
+            //     ErrorKind::NotFound => (LockfileError::MissingParent),
+            //     ErrorKind::PermissionDenied => (LockfileError::NoPermission),
+            //     e => LockfileError::UnexpectedError(e),
+            // });
 
-            if let Err(LockfileError::UnexpectedError(kind)) = f {
-                if kind == ErrorKind::AlreadyExists {
+            if let Err(err) = f {
+                if err.kind() == ErrorKind::AlreadyExists {
                     return Ok(false);
                 }
+            } else {
+                self.lock = Some(f.context("Couldn't take lock")?);
             }
-
-            self.lock = Some(f?);
         }
 
         Ok(true)
     }
 
-    pub fn write(&mut self, contents: &str) -> Result<(), LockfileError> {
-        self.check_stale_lock()?;
+    pub fn write(&mut self, contents: &str) -> anyhow::Result<()> {
         let lock = self.lock.as_mut().ok_or(LockfileError::StaleLock)?;
 
         lock.write(contents.as_bytes())
-            .map_err(|e| LockfileError::UnexpectedError(e.kind()))?;
+            .context("Couldn't write to lock file")?;
+        // .map_err(|e| LockfileError::UnexpectedError(e.kind()))?;
 
         Ok(())
     }
 
-    pub fn commit(&mut self) -> Result<(), LockfileError> {
-        let _ = self.lock.take().ok_or(LockfileError::StaleLock)?;
-        std::fs::rename(&self.lock_path, &self.file_path)
-            .map_err(|e| LockfileError::UnexpectedError(e.kind()))?;
+    pub fn commit(&mut self) -> anyhow::Result<()> {
+        let lock = self
+            .lock
+            .take()
+            .ok_or(LockfileError::StaleLock)
+            .context("Couldn't drop lock")?;
+        drop(lock);
+        std::fs::rename(&self.lock_path, &self.file_path).context("Couldn't rename lock file")?;
+        // .map_err(|e| LockfileError::UnexpectedError(e.kind()))?;
 
         Ok(())
-    }
-
-    fn check_stale_lock(&self) -> Result<(), LockfileError> {
-        match &self.lock {
-            None => Err(LockfileError::StaleLock),
-            Some(_) => Ok(()),
-        }
     }
 }

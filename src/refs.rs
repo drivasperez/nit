@@ -17,7 +17,7 @@ impl Refs {
     }
 
     pub fn update_head(&self, oid: &ObjectId) -> anyhow::Result<()> {
-        let mut lock = Lockfile::new(&self.pathname);
+        let mut lock = Lockfile::new(&self.head_path());
         lock.hold_for_update()?;
 
         lock.write(&oid.as_str()?)?;

@@ -7,6 +7,8 @@ pub mod database;
 pub mod lockfile;
 pub mod refs;
 
+mod utils;
+
 pub struct Workspace {
     pathname: PathBuf,
 }

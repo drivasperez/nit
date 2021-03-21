@@ -6,6 +6,8 @@ use std::{
     path::PathBuf,
 };
 
+use crate::utils::bytes_to_hex_string;
+
 use anyhow::Context;
 use flate2::{write::ZlibEncoder, Compression};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
@@ -109,14 +111,4 @@ impl Database {
         let blah: Vec<u8> = thread_rng().sample_iter(&Alphanumeric).take(6).collect();
         String::from_utf8(blah).unwrap()
     }
-}
-
-fn bytes_to_hex_string(bytes: &[u8]) -> anyhow::Result<String> {
-    use core::fmt::Write;
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        write!(s, "{:02x}", byte)?;
-    }
-
-    Ok(s)
 }
