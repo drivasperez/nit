@@ -9,6 +9,6 @@ edition = "2018"
 [dependencies]
 structopt = "0.3.21"
 anyhow = "1.0.38"
-sha1 = "0.6.0"
-flate2 = { version = "1.0.20", features = ["zlib"] }
+sha-1 = "0.9.4"
+flate2 = "1.0.20"
 rand = "0.8.3"
