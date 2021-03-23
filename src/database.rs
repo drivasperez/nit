@@ -134,6 +134,7 @@ impl Database {
         Ok(())
     }
 
+    // TODO: Not thread-safe.
     fn generate_temp_name() -> String {
         let blah: Vec<u8> = thread_rng().sample_iter(&Alphanumeric).take(6).collect();
         String::from_utf8(blah).unwrap()

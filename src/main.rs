@@ -1,8 +1,9 @@
 use anyhow::anyhow;
 use anyhow::Context;
 use chrono::Utc;
-use nit::{database::Database, refs::Refs, Author, Commit, Tree};
-use nit::{Blob, Entry, Workspace};
+use nit::{
+    database::Database, refs::Refs, workspace::Workspace, Author, Blob, Commit, Entry, Tree,
+};
 use std::fs;
 use std::path::Path;
 use std::{env, io::Read};
