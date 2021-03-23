@@ -1,4 +1,6 @@
+use anyhow::anyhow;
 use std::{
+    ffi::OsString,
     fs, io,
     os::unix::prelude::MetadataExt,
     path::{Path, PathBuf},
@@ -31,17 +33,23 @@ impl Workspace {
         }
     }
 
-    pub fn list_files(&self) -> std::io::Result<Vec<PathBuf>> {
+    pub fn list_files(&self) -> anyhow::Result<Vec<OsString>> {
         let dirs = std::fs::read_dir(&self.pathname)?;
-        let mut filtered_dirs = Vec::new();
+        let mut file_names = Vec::new();
         for dir in dirs {
             let path = dir?.path();
             if !&[".", "..", ".git"].iter().any(|&s| path.ends_with(s)) {
-                filtered_dirs.push(path);
+                let file_name = path
+                    .file_name()
+                    .ok_or(anyhow!("Couldn't get path filename"))?
+                    .to_owned();
+
+                file_names.push(file_name);
             }
         }
 
-        Ok(filtered_dirs)
+        println!("{:?}", file_names);
+        Ok(file_names)
     }
 
     pub fn read_file<P: AsRef<Path>>(&self, path: P) -> io::Result<Vec<u8>> {

@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use database::{Object, ObjectId};
+use std::ffi::OsString;
 use std::{borrow::Cow, fmt::Display, os::unix::prelude::OsStrExt};
-use std::{ffi::OsString, path::PathBuf};
 use workspace::EntryMode;
 
 pub mod database;
@@ -43,8 +43,8 @@ pub struct Entry {
 }
 
 impl Entry {
-    pub fn new(path: &PathBuf, oid: ObjectId, mode: EntryMode) -> Self {
-        let name = path.file_name().unwrap().to_owned();
+    pub fn new(path: &OsString, oid: ObjectId, mode: EntryMode) -> Self {
+        let name = path.to_owned();
         Self { name, oid, mode }
     }
 }
