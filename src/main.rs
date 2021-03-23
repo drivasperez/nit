@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
             }
 
             println!(
-                "Created empty Nit repository in {}",
+                "Initialised empty Nit repository in {}",
                 git_path.to_str().unwrap_or("Unknown")
             );
         }
@@ -39,18 +39,17 @@ fn main() -> anyhow::Result<()> {
                     let data = ws
                         .read_file(&path)
                         .with_context(|| format!("Couldn't load data from {:?}", &path))?;
-                    let mut blob = Blob::new(data);
-                    db.store(&mut blob)
-                        .with_context(|| "Could not store blob")?;
+                    let blob = Blob::new(data);
+                    let blob = db.store(blob).with_context(|| "Could not store blob")?;
 
                     let mode = ws.stat_file(&path)?;
 
-                    Ok(Entry::new(path, blob.oid().unwrap().clone(), mode))
+                    Ok(Entry::new(path, blob.oid().clone(), mode))
                 })
                 .collect::<anyhow::Result<Vec<Entry>>>()?;
 
-            let mut tree = Tree::new(entries);
-            db.store(&mut tree)?;
+            let tree = Tree::new(entries);
+            let tree = db.store(tree)?;
 
             let parent = refs.read_head();
             let name = env::var("GIT_AUTHOR_NAME")
@@ -64,11 +63,10 @@ fn main() -> anyhow::Result<()> {
             std::io::stdin().read_to_end(&mut msg)?;
             let msg = String::from_utf8(msg)?;
 
-            let mut commit =
-                Commit::new(parent.as_deref(), tree.oid().unwrap().clone(), author, msg);
-            db.store(&mut commit)?;
+            let commit = Commit::new(parent.as_deref(), tree.oid().clone(), author, msg);
+            let commit = db.store(commit)?;
 
-            refs.update_head(commit.oid().unwrap())?;
+            refs.update_head(commit.oid())?;
 
             let root_msg = match parent {
                 Some(_) => "(root-commit) ",
@@ -78,7 +76,7 @@ fn main() -> anyhow::Result<()> {
             println!(
                 "[{}{}] {}",
                 root_msg,
-                commit.oid().unwrap(),
+                commit.oid(),
                 commit.message().lines().next().unwrap_or("")
             );
         }

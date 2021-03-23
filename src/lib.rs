@@ -66,25 +66,16 @@ impl Workspace {
 }
 
 pub struct Blob {
-    oid: Option<ObjectId>,
     data: Vec<u8>,
 }
 
 impl Blob {
     pub fn new(data: Vec<u8>) -> Self {
-        Self { data, oid: None }
+        Self { data }
     }
 
     pub fn to_bytestr(&self) -> &[u8] {
         &self.data
-    }
-
-    pub fn set_oid(&mut self, oid: ObjectId) {
-        self.oid = Some(oid);
-    }
-
-    pub fn oid(&self) -> Option<&ObjectId> {
-        self.oid.as_ref()
     }
 }
 
@@ -95,10 +86,6 @@ impl Object for Blob {
 
     fn kind(&self) -> &str {
         "blob"
-    }
-
-    fn set_oid(&mut self, oid: ObjectId) {
-        self.oid = Some(oid);
     }
 }
 
@@ -118,7 +105,6 @@ impl Entry {
 
 #[derive(Debug)]
 pub struct Tree {
-    oid: Option<ObjectId>,
     entries: Vec<Entry>,
 }
 
@@ -126,11 +112,7 @@ impl Tree {
     pub fn new(mut entries: Vec<Entry>) -> Self {
         entries.sort_by(|a, b| a.name.cmp(&b.name));
 
-        Self { entries, oid: None }
-    }
-
-    pub fn oid(&self) -> Option<&ObjectId> {
-        self.oid.as_ref()
+        Self { entries }
     }
 }
 
@@ -150,7 +132,7 @@ impl Object for Tree {
                 });
                 bytes.extend_from_slice(b" ");
                 bytes.extend_from_slice(entry.name.as_bytes());
-                bytes.extend_from_slice(&['\0' as u8]);
+                bytes.push(b'\0');
                 bytes.extend_from_slice(entry.oid.bytes());
                 bytes
             })
@@ -160,10 +142,6 @@ impl Object for Tree {
 
     fn kind(&self) -> &str {
         "tree"
-    }
-
-    fn set_oid(&mut self, oid: ObjectId) {
-        self.oid = Some(oid);
     }
 }
 
@@ -196,7 +174,6 @@ pub struct Commit {
     author: Author,
     message: String,
     tree: ObjectId,
-    oid: Option<ObjectId>,
     parent: Option<String>,
 }
 
@@ -207,12 +184,7 @@ impl Commit {
             author,
             tree: tree_oid,
             message,
-            oid: None,
         }
-    }
-
-    pub fn oid(&self) -> Option<&ObjectId> {
-        self.oid.as_ref()
     }
 
     pub fn message(&self) -> &str {
@@ -237,9 +209,5 @@ impl Object for Commit {
 
     fn kind(&self) -> &str {
         "commit"
-    }
-
-    fn set_oid(&mut self, oid: ObjectId) {
-        self.oid = Some(oid);
     }
 }
