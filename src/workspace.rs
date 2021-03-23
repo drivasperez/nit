@@ -34,7 +34,13 @@ impl Workspace {
     }
 
     pub fn list_files(&self) -> anyhow::Result<Vec<OsString>> {
-        let dirs = std::fs::read_dir(&self.pathname)?;
+        self._list_files(None)
+    }
+
+    fn _list_files(&self, dir: Option<&Path>) -> anyhow::Result<Vec<OsString>> {
+        let dir = dir.unwrap_or(&self.pathname);
+
+        let dirs = std::fs::read_dir(dir)?;
         let mut file_names = Vec::new();
         for dir in dirs {
             let path = dir?.path();
@@ -48,8 +54,28 @@ impl Workspace {
             }
         }
 
+        let file_names = file_names
+            .iter()
+            .map(|name| -> anyhow::Result<Vec<OsString>> {
+                let path = dir.join(name);
+
+                if path.is_dir() {
+                    self._list_files(Some(&path))
+                } else {
+                    Ok(vec![crate::utils::diff_paths(path, &self.pathname)
+                        .unwrap()
+                        .as_os_str()
+                        .to_owned()])
+                }
+            })
+            .flat_map(|result| match result {
+                Ok(vec) => vec.into_iter().map(|item| Ok(item)).collect(),
+                Err(e) => vec![Err(e)],
+            })
+            .collect();
+
         println!("{:?}", file_names);
-        Ok(file_names)
+        file_names
     }
 
     pub fn read_file<P: AsRef<Path>>(&self, path: P) -> io::Result<Vec<u8>> {
