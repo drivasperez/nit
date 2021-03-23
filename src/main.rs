@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use anyhow::Context;
 use chrono::Utc;
 use nit::{database::Database, refs::Refs, Author, Commit, Tree};
@@ -23,7 +24,7 @@ fn main() -> anyhow::Result<()> {
                 git_path.to_str().unwrap_or("Unknown")
             );
         }
-        Opt::Commit {} => {
+        Opt::Commit { message } => {
             let root_path = std::env::current_dir()?;
             let git_path = root_path.join(".git");
             let db_path = git_path.join("objects");
@@ -59,9 +60,14 @@ fn main() -> anyhow::Result<()> {
 
             let author = Author::new(name, email, Utc::now());
 
-            let mut msg = Vec::new();
-            std::io::stdin().read_to_end(&mut msg)?;
-            let msg = String::from_utf8(msg)?;
+            let msg = message
+                .or_else(|| {
+                    let mut msg = Vec::new();
+                    std::io::stdin().read_to_end(&mut msg).ok()?;
+                    let str = String::from_utf8(msg).ok()?;
+                    Some(str)
+                })
+                .ok_or(anyhow!("No commit message, aborting"))?;
 
             let commit = Commit::new(parent.as_deref(), tree.oid().clone(), author, msg);
             let commit = db.store(commit)?;
@@ -93,5 +99,8 @@ enum Opt {
         path: String,
     },
     /// Record changes to the repository
-    Commit,
+    Commit {
+        #[structopt(long = "message", short = "m")]
+        message: Option<String>,
+    },
 }
