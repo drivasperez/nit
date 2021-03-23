@@ -63,7 +63,7 @@ impl Workspace {
                     self._list_files(Some(&path))
                 } else {
                     Ok(vec![crate::utils::diff_paths(path, &self.pathname)
-                        .unwrap()
+                        .ok_or(anyhow!("Couldn't get relative path"))?
                         .as_os_str()
                         .to_owned()])
                 }
