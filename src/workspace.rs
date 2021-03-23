@@ -60,8 +60,10 @@ impl Workspace {
                 let path = dir.join(name);
 
                 if path.is_dir() {
+                    // Recurse into directory
                     self._list_files(Some(&path))
                 } else {
+                    // It's a file, add it to the list
                     Ok(vec![crate::utils::diff_paths(path, &self.pathname)
                         .ok_or(anyhow!("Couldn't get relative path"))?
                         .as_os_str()
