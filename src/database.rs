@@ -14,7 +14,7 @@ use flate2::{write::ZlibEncoder, Compression};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use sha1::{Digest, Sha1};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct ObjectId([u8; 20]);
 
 impl ObjectId {
