@@ -25,6 +25,10 @@ impl ObjectId {
     pub fn bytes(&self) -> &[u8; 20] {
         &self.0
     }
+
+    pub(crate) fn new(bytes: [u8; 20]) -> Self {
+        Self(bytes)
+    }
 }
 
 impl Display for ObjectId {

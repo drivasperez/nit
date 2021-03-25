@@ -40,6 +40,7 @@ impl Lockfile {
             file_path,
             lock_path,
         }
+
     }
 
     pub fn hold_for_update(&mut self) -> anyhow::Result<bool> {

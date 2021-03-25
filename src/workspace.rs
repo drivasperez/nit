@@ -2,25 +2,10 @@ use anyhow::anyhow;
 use std::{
     ffi::OsString,
     fs, io,
-    os::unix::prelude::MetadataExt,
     path::{Path, PathBuf},
 };
 
-#[derive(Debug, Copy, Clone)]
-pub enum EntryMode {
-    Executable,
-    Regular,
-}
-
-impl From<fs::Metadata> for EntryMode {
-    fn from(metadata: fs::Metadata) -> Self {
-        let mode = metadata.mode();
-        match (mode & 0o111) != 0 {
-            true => Self::Executable,
-            false => Self::Regular,
-        }
-    }
-}
+use crate::tree::EntryMode;
 
 pub struct Workspace {
     pathname: PathBuf,

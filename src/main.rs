@@ -2,7 +2,11 @@ use anyhow::anyhow;
 use anyhow::Context;
 use chrono::Utc;
 use nit::{
-    database::Database, refs::Refs, workspace::Workspace, Author, Blob, Commit, Entry, Tree,
+    database::Database,
+    refs::Refs,
+    tree::{Entry, Tree},
+    workspace::Workspace,
+    Author, Blob, Commit,
 };
 use std::fs;
 use std::path::Path;
@@ -50,8 +54,10 @@ fn main() -> anyhow::Result<()> {
                 })
                 .collect::<anyhow::Result<Vec<Entry>>>()?;
 
-            let tree = Tree::new(entries);
-            let tree = db.store(tree)?;
+            let root = Tree::build(entries);
+            root.traverse(|tree| db.store(tree));
+
+            let root = db.store(root)?;
 
             let parent = refs.read_head();
             let name = env::var("GIT_AUTHOR_NAME")
@@ -70,7 +76,7 @@ fn main() -> anyhow::Result<()> {
                 })
                 .ok_or(anyhow!("No commit message, aborting"))?;
 
-            let commit = Commit::new(parent.as_deref(), tree.oid().clone(), author, msg);
+            let commit = Commit::new(parent.as_deref(), root.oid().clone(), author, msg);
             let commit = db.store(commit)?;
 
             refs.update_head(commit.oid())?;

@@ -1,12 +1,11 @@
 use chrono::{DateTime, Utc};
 use database::{Object, ObjectId};
-use std::ffi::OsString;
-use std::{borrow::Cow, fmt::Display, os::unix::prelude::OsStrExt};
-use workspace::EntryMode;
+use std::{borrow::Cow, fmt::Display};
 
 pub mod database;
 pub mod lockfile;
 pub mod refs;
+pub mod tree;
 pub mod workspace;
 
 mod utils;
@@ -32,62 +31,6 @@ impl Object for Blob {
 
     fn kind(&self) -> &str {
         "blob"
-    }
-}
-
-#[derive(Debug)]
-pub struct Entry {
-    name: OsString,
-    oid: ObjectId,
-    mode: EntryMode,
-}
-
-impl Entry {
-    pub fn new(path: &OsString, oid: ObjectId, mode: EntryMode) -> Self {
-        let name = path.to_owned();
-        Self { name, oid, mode }
-    }
-}
-
-#[derive(Debug)]
-pub struct Tree {
-    entries: Vec<Entry>,
-}
-
-impl Tree {
-    pub fn new(mut entries: Vec<Entry>) -> Self {
-        entries.sort_by(|a, b| a.name.cmp(&b.name));
-
-        Self { entries }
-    }
-}
-
-const REGULAR_MODE: &[u8] = b"100644";
-const EXECUTABLE_MODE: &[u8] = b"100755";
-
-impl Object for Tree {
-    fn data(&self) -> Cow<[u8]> {
-        let data: Vec<u8> = self
-            .entries
-            .iter()
-            .flat_map(|entry| {
-                let mut bytes = Vec::new();
-                bytes.extend_from_slice(match entry.mode {
-                    EntryMode::Executable => EXECUTABLE_MODE,
-                    EntryMode::Regular => REGULAR_MODE,
-                });
-                bytes.extend_from_slice(b" ");
-                bytes.extend_from_slice(entry.name.as_bytes());
-                bytes.push(b'\0');
-                bytes.extend_from_slice(entry.oid.bytes());
-                bytes
-            })
-            .collect();
-        Cow::Owned(data)
-    }
-
-    fn kind(&self) -> &str {
-        "tree"
     }
 }
 
