@@ -113,13 +113,38 @@ mod test {
     use super::*;
     #[test]
     fn arena_hmm() {
-        let entry1 = "Hey";
-        let entry2 = "Hi";
-
         let mut arena = Arena::new();
-        arena.insert(entry1);
-        arena.insert(entry2);
+        let entry1 = arena.insert("Hey");
+        let entry2 = arena.insert("Hi");
+        let entry3 = arena.insert("oh no");
 
-        assert_eq!(arena, Arena::new());
+        arena.append(entry2, entry1).unwrap();
+        arena.append(entry3, entry1).unwrap();
+
+        assert_eq!(
+            arena,
+            Arena {
+                arena: vec![
+                    Node {
+                        idx: 0,
+                        val: "Hey",
+                        parent: None,
+                        children: vec![1, 2]
+                    },
+                    Node {
+                        idx: 1,
+                        val: "Hi",
+                        parent: Some(0),
+                        children: vec![]
+                    },
+                    Node {
+                        idx: 2,
+                        val: "oh no",
+                        parent: Some(0),
+                        children: vec![]
+                    }
+                ]
+            }
+        );
     }
 }
