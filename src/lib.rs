@@ -8,6 +8,7 @@ pub mod refs;
 pub mod tree;
 pub mod workspace;
 
+mod arena;
 mod utils;
 
 pub struct Blob {

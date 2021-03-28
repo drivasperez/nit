@@ -56,7 +56,7 @@ fn main() -> anyhow::Result<()> {
                 })
                 .collect::<anyhow::Result<Vec<Entry>>>()?;
 
-            let mut root = Tree::build(entries);
+            let mut root = Tree::build(entries)?;
             root.traverse(|mut tree| db.store(&mut tree));
 
             let root_oid = db.store(&mut root)?;
