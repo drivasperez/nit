@@ -1,5 +1,5 @@
-use std::ffi::OsString;
-use std::{borrow::Cow, fs};
+use std::{borrow::Cow, collections::HashMap, fs};
+use std::{ffi::OsString, os::unix::prelude::OsStrExt};
 use std::{os::unix::prelude::MetadataExt, path::PathBuf};
 
 use crate::{
@@ -51,11 +51,11 @@ pub enum TreeEntry {
 }
 
 #[derive(Debug)]
-pub struct Tree {
+pub struct Hierarchy {
     arena: Arena<TreeEntry>,
 }
 
-impl Tree {
+impl Hierarchy {
     pub fn new() -> Self {
         Self {
             arena: Arena::new(),
@@ -64,9 +64,12 @@ impl Tree {
 
     pub fn traverse<F>(&mut self, _func: F)
     where
-        F: FnMut(Tree) -> anyhow::Result<ObjectId>,
+        F: FnMut(Hierarchy) -> anyhow::Result<ObjectId>,
     {
-        todo!()
+        let top_level = self.arena.top_level();
+
+        let mut tree = Tree::new()
+        for entry in top_level {}
     }
 
     pub fn build(mut entries: Vec<Entry>) -> anyhow::Result<Self> {
@@ -118,27 +121,46 @@ impl Tree {
 const REGULAR_MODE: &[u8] = b"100644";
 const EXECUTABLE_MODE: &[u8] = b"100755";
 
-impl Object for Tree {
-    fn data(&self) -> Cow<[u8]> {
-        // let data: Vec<u8> = self
-        //     .arena
-        //     .iter()
-        //     .flat_map(|entry| {
-        //         let mut bytes = Vec::new();
-        //         bytes.extend_from_slice(match entry.mode {
-        //             EntryMode::Executable => EXECUTABLE_MODE,
-        //             EntryMode::Regular => REGULAR_MODE,
-        //         });
-        //         bytes.extend_from_slice(b" ");
-        //         bytes.extend_from_slice(entry.name.as_bytes());
-        //         bytes.push(b'\0');
-        //         bytes.extend_from_slice(entry.oid.bytes());
-        //         bytes
-        //     })
-        //     .collect();
-        // Cow::Owned(data)
+enum TreeOrEntry<'a> {
+    Tree(Tree<'a>),
+    Entry(&'a Entry),
+}
+pub struct Tree<'a> {
+    entries: Vec<TreeOrEntry<'a>>,
+}
 
-        todo!()
+impl<'a> Tree<'a> {
+    pub fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+}
+
+impl Object for Tree<'_> {
+    fn data(&self) -> Cow<[u8]> {
+        let data: Vec<u8> = self
+            .entries
+            .iter()
+            .flat_map(|entry| {
+                let mut bytes = Vec::new();
+                match entry {
+                    TreeOrEntry::Entry(entry) => {
+                        bytes.extend_from_slice(match entry.mode {
+                            EntryMode::Executable => EXECUTABLE_MODE,
+                            EntryMode::Regular => REGULAR_MODE,
+                        });
+                        bytes.extend_from_slice(b" ");
+                        bytes.extend_from_slice(entry.name.as_bytes());
+                        bytes.push(b'\0');
+                        bytes.extend_from_slice(entry.oid.bytes());
+                        bytes
+                    }
+                    TreeOrEntry::Tree(tree) => tree.data().to_vec(),
+                }
+            })
+            .collect();
+        Cow::Owned(data)
     }
 
     fn kind(&self) -> &str {
