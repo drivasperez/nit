@@ -3,7 +3,6 @@ use std::{
     fmt::Display,
     fs::{self, File},
     io::{self, Write},
-    ops::{Deref, DerefMut},
     path::PathBuf,
 };
 
@@ -45,34 +44,6 @@ pub trait Object {
     fn kind(&self) -> &str;
 }
 
-pub struct WithOid<T> {
-    inner: T,
-    oid: ObjectId,
-}
-
-impl<T> WithOid<T> {
-    pub fn oid(&self) -> &ObjectId {
-        &self.oid
-    }
-
-    pub fn oid_mut(&mut self) -> &mut ObjectId {
-        &mut self.oid
-    }
-}
-
-impl<T> Deref for WithOid<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-impl<T> DerefMut for WithOid<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
-    }
-}
-
 pub struct Database {
     pathname: PathBuf,
 }
@@ -84,7 +55,7 @@ impl Database {
         }
     }
 
-    pub fn store<O: Object>(&self, object: O) -> anyhow::Result<WithOid<O>> {
+    pub fn store<O: Object>(&self, object: &mut O) -> anyhow::Result<ObjectId> {
         let mut content = Vec::new();
         let data = object.data();
         content.extend_from_slice(object.kind().as_bytes());
@@ -98,7 +69,7 @@ impl Database {
         self.write_object(&oid, &content)
             .with_context(|| format!("Couldn't write object with hash {:?}", &oid))?;
 
-        Ok(WithOid { inner: object, oid })
+        Ok(oid)
     }
 
     fn write_object(&self, oid: &ObjectId, content: &[u8]) -> anyhow::Result<()> {

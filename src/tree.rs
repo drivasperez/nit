@@ -59,6 +59,13 @@ impl Tree {
         }
     }
 
+    pub fn traverse<F>(&mut self, func: F)
+    where
+        F: FnMut(Tree) -> anyhow::Result<ObjectId>,
+    {
+        todo!()
+    }
+
     pub fn build(mut entries: Vec<Entry>) -> Self {
         entries.sort_by(|a, b| a.name.cmp(&b.name));
         let arena = Arena::new();

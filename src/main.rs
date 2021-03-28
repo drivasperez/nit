@@ -45,19 +45,21 @@ fn main() -> anyhow::Result<()> {
                     let data = ws
                         .read_file(&path)
                         .with_context(|| format!("Couldn't load data from {:?}", &path))?;
-                    let blob = Blob::new(data);
-                    let blob = db.store(blob).with_context(|| "Could not store blob")?;
+                    let mut blob = Blob::new(data);
+                    let blob_oid = db
+                        .store(&mut blob)
+                        .with_context(|| "Could not store blob")?;
 
                     let mode = ws.stat_file(&path)?;
 
-                    Ok(Entry::new(path, blob.oid().clone(), mode))
+                    Ok(Entry::new(path, blob_oid, mode))
                 })
                 .collect::<anyhow::Result<Vec<Entry>>>()?;
 
-            let root = Tree::build(entries);
-            root.traverse(|tree| db.store(tree));
+            let mut root = Tree::build(entries);
+            root.traverse(|mut tree| db.store(&mut tree));
 
-            let root = db.store(root)?;
+            let root_oid = db.store(&mut root)?;
 
             let parent = refs.read_head();
             let name = env::var("GIT_AUTHOR_NAME")
@@ -76,10 +78,10 @@ fn main() -> anyhow::Result<()> {
                 })
                 .ok_or(anyhow!("No commit message, aborting"))?;
 
-            let commit = Commit::new(parent.as_deref(), root.oid().clone(), author, msg);
-            let commit = db.store(commit)?;
+            let mut commit = Commit::new(parent.as_deref(), root_oid, author, msg);
+            let commit_oid = db.store(&mut commit)?;
 
-            refs.update_head(commit.oid())?;
+            refs.update_head(&commit_oid)?;
 
             let root_msg = match parent {
                 Some(_) => "(root-commit) ",
@@ -89,7 +91,7 @@ fn main() -> anyhow::Result<()> {
             println!(
                 "[{}{}] {}",
                 root_msg,
-                commit.oid(),
+                commit_oid,
                 commit.message().lines().next().unwrap_or("")
             );
         }
