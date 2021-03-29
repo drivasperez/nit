@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    fmt::Display,
+    fmt::{Debug, Display},
     fs::{self, File},
     io::{self, Write},
     path::PathBuf,
@@ -13,7 +13,7 @@ use flate2::{write::ZlibEncoder, Compression};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use sha1::{Digest, Sha1};
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
 pub struct ObjectId([u8; 20]);
 
 impl ObjectId {
@@ -27,6 +27,15 @@ impl ObjectId {
 
     pub(crate) fn new(bytes: [u8; 20]) -> Self {
         Self(bytes)
+    }
+}
+
+impl Debug for ObjectId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = self
+            .as_str()
+            .unwrap_or_else(|_| String::from("[Invalid Oid]"));
+        write!(f, "{}", s)
     }
 }
 
@@ -55,7 +64,7 @@ impl Database {
         }
     }
 
-    pub fn store<O: Object>(&self, object: &mut O) -> anyhow::Result<ObjectId> {
+    pub fn store<O: Object>(&self, object: &O) -> anyhow::Result<ObjectId> {
         let mut content = Vec::new();
         let data = object.data();
         content.extend_from_slice(object.kind().as_bytes());

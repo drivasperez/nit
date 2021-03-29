@@ -1,11 +1,8 @@
-use std::{borrow::Cow, collections::HashMap, fs};
-use std::{ffi::OsString, os::unix::prelude::OsStrExt};
+use std::ffi::OsString;
+use std::{borrow::Cow, collections::BTreeMap, fs};
 use std::{os::unix::prelude::MetadataExt, path::PathBuf};
 
-use crate::{
-    arena::{Arena, Key},
-    database::{Object, ObjectId},
-};
+use crate::database::{Object, ObjectId};
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum EntryMode {
     Executable,
@@ -46,121 +43,91 @@ impl Entry {
 
 #[derive(Debug, PartialEq)]
 pub enum TreeEntry {
-    Tree(PathBuf),
+    Tree(Tree, Option<ObjectId>),
     Object(Entry),
 }
 
-#[derive(Debug)]
-pub struct Hierarchy {
-    arena: Arena<TreeEntry>,
+#[derive(Debug, PartialEq)]
+pub struct Tree {
+    entries: BTreeMap<OsString, TreeEntry>,
 }
 
-impl Hierarchy {
+impl Tree {
     pub fn new() -> Self {
         Self {
-            arena: Arena::new(),
+            entries: BTreeMap::new(),
         }
     }
 
-    pub fn traverse<F>(&mut self, _func: F)
+    pub fn traverse<F>(&mut self, func: &F) -> anyhow::Result<ObjectId>
     where
-        F: FnMut(Hierarchy) -> anyhow::Result<ObjectId>,
+        F: Fn(&Tree) -> anyhow::Result<ObjectId>,
     {
-        let top_level = self.arena.top_level();
+        for (_name, entry) in &mut self.entries {
+            if let TreeEntry::Tree(tree, oid) = entry {
+                let tree_oid = tree.traverse(func)?;
+                *oid = Some(tree_oid);
+            }
+        }
 
-        let mut tree = Tree::new()
-        for entry in top_level {}
+        func(self)
     }
 
-    pub fn build(mut entries: Vec<Entry>) -> anyhow::Result<Self> {
+    pub fn build(mut entries: Vec<Entry>) -> Self {
         entries.sort_by(|a, b| a.name.cmp(&b.name));
-        let arena = Arena::new();
-        let mut root = Self { arena };
+        let mut root = Tree::new();
 
         for entry in entries {
-            root.add_entry(entry)?;
+            let parents = entry.parent_directories();
+            root.add_entry(parents, entry);
         }
 
-        Ok(root)
+        dbg!(root)
     }
 
-    pub fn add_entry(&mut self, entry: Entry) -> anyhow::Result<()> {
-        let parents: Vec<TreeEntry> = entry
-            .parent_directories()
-            .into_iter()
-            .map(TreeEntry::Tree)
-            .collect();
-
+    pub fn add_entry(&mut self, parents: Vec<PathBuf>, entry: Entry) {
         if parents.is_empty() {
-            self.arena.insert(TreeEntry::Object(entry));
+            self.entries
+                .insert(entry.name.clone(), TreeEntry::Object(entry));
         } else {
-            let mut parent: Option<Key> = None;
-            for p in parents {
-                parent = match self.arena.get_token(&p) {
-                    Some(node) => Some(node),
-                    None => {
-                        let child = self.arena.insert(p);
-                        if let Some(parent) = parent {
-                            self.arena.append(child, parent)?;
-                        }
+            let tree = self
+                .entries
+                .entry(parents[0].file_name().unwrap().to_owned())
+                .or_insert(TreeEntry::Tree(Tree::new(), None));
 
-                        Some(child)
-                    }
-                }
+            if let TreeEntry::Tree(tree, _) = tree {
+                tree.add_entry(
+                    parents.iter().skip(1).map(|c| c.to_owned()).collect(),
+                    entry,
+                )
             }
-
-            let parent = parent.unwrap();
-            let node = self.arena.insert(TreeEntry::Object(entry));
-            self.arena.append(node, parent)?;
         }
-
-        Ok(())
     }
 }
 
 const REGULAR_MODE: &[u8] = b"100644";
 const EXECUTABLE_MODE: &[u8] = b"100755";
 
-enum TreeOrEntry<'a> {
-    Tree(Tree<'a>),
-    Entry(&'a Entry),
-}
-pub struct Tree<'a> {
-    entries: Vec<TreeOrEntry<'a>>,
-}
-
-impl<'a> Tree<'a> {
-    pub fn new() -> Self {
-        Self {
-            entries: Vec::new(),
-        }
-    }
-}
-
-impl Object for Tree<'_> {
+impl Object for Tree {
     fn data(&self) -> Cow<[u8]> {
-        let data: Vec<u8> = self
-            .entries
-            .iter()
-            .flat_map(|entry| {
-                let mut bytes = Vec::new();
-                match entry {
-                    TreeOrEntry::Entry(entry) => {
-                        bytes.extend_from_slice(match entry.mode {
-                            EntryMode::Executable => EXECUTABLE_MODE,
-                            EntryMode::Regular => REGULAR_MODE,
-                        });
-                        bytes.extend_from_slice(b" ");
-                        bytes.extend_from_slice(entry.name.as_bytes());
-                        bytes.push(b'\0');
-                        bytes.extend_from_slice(entry.oid.bytes());
-                        bytes
-                    }
-                    TreeOrEntry::Tree(tree) => tree.data().to_vec(),
-                }
-            })
-            .collect();
-        Cow::Owned(data)
+        todo!()
+        // let data: Vec<u8> = self
+        //     .entries
+        //     .iter()
+        //     .flat_map(|(name, entry)| {
+        //         let mut bytes = Vec::new();
+        //         bytes.extend_from_slice(match entry.mode {
+        //             EntryMode::Executable => EXECUTABLE_MODE,
+        //             EntryMode::Regular => REGULAR_MODE,
+        //         });
+        //         bytes.extend_from_slice(b" ");
+        //         bytes.extend_from_slice(entry.name.as_bytes());
+        //         bytes.push(b'\0');
+        //         bytes.extend_from_slice(entry.oid.bytes());
+        //         bytes
+        //     })
+        //     .collect();
+        // Cow::Owned(data)
     }
 
     fn kind(&self) -> &str {

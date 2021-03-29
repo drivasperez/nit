@@ -74,3 +74,26 @@ impl Workspace {
         Ok(EntryMode::from(metadata))
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn list_files() {
+        let ws = Workspace::new("../testnit");
+
+        let entries = ws.list_files().unwrap();
+
+        assert_eq!(
+            entries,
+            vec![
+                "woop.txt",
+                "a/b/hello.txt",
+                "cool.rs",
+                "hi.c",
+                "COMMIT_MSG.txt",
+                "wap.json"
+            ]
+        );
+    }
+}

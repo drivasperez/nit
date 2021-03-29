@@ -71,6 +71,20 @@ impl<T: PartialEq> Arena<T> {
             }
         }
     }
+
+    pub fn top_level(&mut self) -> Vec<&Node<T>> {
+        self.arena
+            .iter()
+            .filter(|&node| node.parent.is_none())
+            .collect()
+    }
+
+    pub fn bottom_level(&mut self) -> Vec<&Node<T>> {
+        self.arena
+            .iter()
+            .filter(|&node| node.children.is_empty())
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
