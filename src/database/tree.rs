@@ -82,7 +82,7 @@ impl Tree {
             root.add_entry(parents, entry);
         }
 
-        dbg!(root)
+        root
     }
 
     pub fn add_entry(&mut self, parents: Vec<PathBuf>, entry: Entry) {
