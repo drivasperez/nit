@@ -3,24 +3,19 @@ use std::{
     ffi::{OsStr, OsString},
     fs::Metadata,
     os::unix::prelude::{MetadataExt, OsStrExt},
-    path::{Path, PathBuf},
-    time::SystemTime,
+    path::Path,
 };
 
-use crate::{
-    database::{EntryMode, ObjectId},
-    lockfile::Lockfile,
-    utils::is_executable,
-};
+use crate::{database::ObjectId, lockfile::Lockfile, utils::is_executable};
 
 pub struct Index {
     lockfile: Lockfile,
     entries: HashMap<OsString, Entry>,
 }
 
-const MAX_PATH_SIZE: usize = 0xfff;
-const REGULAR_MODE: &str = "0100644";
-const EXECUTABLE_MODE: &str = "0100755";
+const MAX_PATH_SIZE: u16 = 0xfff;
+const REGULAR_MODE: u16 = 0o100644;
+const EXECUTABLE_MODE: u16 = 0o100755;
 
 pub struct Entry {
     ctime: i64,
@@ -29,7 +24,7 @@ pub struct Entry {
     mtime_nsec: i64,
     dev: u64,
     ino: u64,
-    mode: &'static str,
+    mode: u16,
     uid: u32,
     gid: u32,
     size: u64,
@@ -55,7 +50,7 @@ impl Entry {
             REGULAR_MODE
         };
 
-        let flags = usize::min(path.as_bytes().len(), MAX_PATH_SIZE);
+        let flags = usize::min(path.as_bytes().len(), MAX_PATH_SIZE as usize);
 
         let path = path.to_owned();
 
