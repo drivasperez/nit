@@ -1,5 +1,5 @@
-use std::ffi::OsString;
 use std::{borrow::Cow, collections::BTreeMap, fs};
+use std::{ffi::OsString, os::unix::prelude::OsStrExt};
 use std::{os::unix::prelude::MetadataExt, path::PathBuf};
 
 use crate::database::{Object, ObjectId};
@@ -107,27 +107,42 @@ impl Tree {
 
 const REGULAR_MODE: &[u8] = b"100644";
 const EXECUTABLE_MODE: &[u8] = b"100755";
+const DIRECTORY_MODE: &[u8] = b"40000";
 
 impl Object for Tree {
     fn data(&self) -> Cow<[u8]> {
-        todo!()
-        // let data: Vec<u8> = self
-        //     .entries
-        //     .iter()
-        //     .flat_map(|(name, entry)| {
-        //         let mut bytes = Vec::new();
-        //         bytes.extend_from_slice(match entry.mode {
-        //             EntryMode::Executable => EXECUTABLE_MODE,
-        //             EntryMode::Regular => REGULAR_MODE,
-        //         });
-        //         bytes.extend_from_slice(b" ");
-        //         bytes.extend_from_slice(entry.name.as_bytes());
-        //         bytes.push(b'\0');
-        //         bytes.extend_from_slice(entry.oid.bytes());
-        //         bytes
-        //     })
-        //     .collect();
-        // Cow::Owned(data)
+        let data: Vec<u8> = self
+            .entries
+            .iter()
+            .flat_map(|(name, entry)| match &entry {
+                &TreeEntry::Object(entry) => {
+                    let mut bytes = Vec::new();
+                    bytes.extend_from_slice(match entry.mode {
+                        EntryMode::Executable => EXECUTABLE_MODE,
+                        EntryMode::Regular => REGULAR_MODE,
+                    });
+                    bytes.extend_from_slice(b" ");
+                    bytes.extend_from_slice(name.as_bytes());
+                    bytes.push(b'\0');
+                    bytes.extend_from_slice(entry.oid.bytes());
+                    bytes
+                }
+                &TreeEntry::Tree(_, oid) => {
+                    let mut bytes = Vec::new();
+                    bytes.extend_from_slice(DIRECTORY_MODE);
+                    bytes.extend_from_slice(b" ");
+                    bytes.extend_from_slice(name.as_bytes());
+                    bytes.push(b'\0');
+                    bytes.extend_from_slice(
+                        oid.as_ref()
+                            .expect("Fatal: Couldn't unwrap Tree's ObjectID")
+                            .bytes(),
+                    );
+                    bytes
+                }
+            })
+            .collect();
+        Cow::Owned(data)
     }
 
     fn kind(&self) -> &str {
