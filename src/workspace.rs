@@ -1,11 +1,10 @@
 use anyhow::anyhow;
 use std::{
     ffi::OsString,
-    fs, io,
+    fs::{self, Metadata},
+    io,
     path::{Path, PathBuf},
 };
-
-use crate::database::EntryMode;
 
 pub struct Workspace {
     pathname: PathBuf,
@@ -69,9 +68,9 @@ impl Workspace {
         std::fs::read(&self.pathname.join(&path))
     }
 
-    pub fn stat_file<P: AsRef<Path>>(&self, path: P) -> io::Result<EntryMode> {
+    pub fn stat_file<P: AsRef<Path>>(&self, path: P) -> io::Result<Metadata> {
         let metadata = fs::metadata(&path)?;
-        Ok(EntryMode::from(metadata))
+        Ok(metadata)
     }
 }
 

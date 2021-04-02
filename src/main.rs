@@ -2,13 +2,14 @@ use anyhow::anyhow;
 use anyhow::Context;
 use chrono::Utc;
 use nit::{
-    database::{Author, Blob, Commit, Database, Entry, Tree},
+    database::{Author, Blob, Commit, Database, Entry, EntryMode, Tree},
+    index::Index,
     refs::Refs,
     workspace::Workspace,
 };
-use std::fs;
 use std::path::Path;
 use std::{env, io::Read};
+use std::{fs, path::PathBuf, str::FromStr};
 use structopt::StructOpt;
 
 fn main() -> anyhow::Result<()> {
@@ -26,6 +27,24 @@ fn main() -> anyhow::Result<()> {
                 "Initialised empty Nit repository in {}",
                 git_path.to_str().unwrap_or("Unknown")
             );
+        }
+        Opt::Add { path } => {
+            let path = PathBuf::from_str(&path)?;
+            let root_path = std::env::current_dir()?;
+            let git_path = root_path.join(".git");
+
+            let ws = Workspace::new(root_path);
+            let db = Database::new(git_path.join("objects"));
+            let mut index = Index::new(&git_path.join("index"));
+
+            let data = ws.read_file(&path)?;
+            let stat = ws.stat_file(&path)?;
+
+            let blob = Blob::new(data);
+            let blob_oid = db.store(&blob)?;
+            index.add(path, blob_oid, stat);
+
+            index.write_updates()?;
         }
         Opt::Commit { message } => {
             let root_path = std::env::current_dir()?;
@@ -50,7 +69,7 @@ fn main() -> anyhow::Result<()> {
 
                     let mode = ws.stat_file(&path)?;
 
-                    Ok(Entry::new(path, blob_oid, mode))
+                    Ok(Entry::new(path, blob_oid, EntryMode::from(mode)))
                 })
                 .collect::<anyhow::Result<Vec<Entry>>>()?;
 
@@ -110,4 +129,6 @@ enum Opt {
         #[structopt(long = "message", short = "m")]
         message: Option<String>,
     },
+    /// Add file contents to the index
+    Add { path: String },
 }
