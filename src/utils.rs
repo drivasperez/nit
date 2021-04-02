@@ -22,6 +22,11 @@ pub fn add_extension(path: &mut std::path::PathBuf, extension: impl AsRef<std::p
     };
 }
 
+/// Determines from a file's mode whether it's executable or not.
+pub fn is_executable(mode: u32) -> bool {
+    mode & 0o111 != 0
+}
+
 // https://github.com/Manishearth/pathdiff/blob/master/src/lib.rs
 pub fn diff_paths<P, B>(path: P, base: B) -> Option<PathBuf>
 where
