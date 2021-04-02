@@ -158,7 +158,7 @@ mod test {
     fn parent_directories() {
         let entry = Entry {
             name: r"bin/nested/jit".into(),
-            oid: ObjectId::new([0; 20]),
+            oid: ObjectId([0; 20]),
             mode: EntryMode::Executable,
         };
 

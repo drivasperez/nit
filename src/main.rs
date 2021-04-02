@@ -2,11 +2,9 @@ use anyhow::anyhow;
 use anyhow::Context;
 use chrono::Utc;
 use nit::{
-    database::Database,
+    database::{Author, Blob, Commit, Database, Entry, Tree},
     refs::Refs,
-    tree::{Entry, Tree},
     workspace::Workspace,
-    Author, Blob, Commit,
 };
 use std::fs;
 use std::path::Path;

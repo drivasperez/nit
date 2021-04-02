@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::tree::EntryMode;
+use crate::database::EntryMode;
 
 pub struct Workspace {
     pathname: PathBuf,

@@ -13,6 +13,16 @@ use flate2::{write::ZlibEncoder, Compression};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use sha1::{Digest, Sha1};
 
+mod author;
+mod blob;
+mod commit;
+mod tree;
+
+pub use author::*;
+pub use blob::*;
+pub use commit::*;
+pub use tree::*;
+
 #[derive(PartialEq, Clone)]
 pub struct ObjectId([u8; 20]);
 
@@ -23,10 +33,6 @@ impl ObjectId {
 
     pub fn bytes(&self) -> &[u8; 20] {
         &self.0
-    }
-
-    pub(crate) fn new(bytes: [u8; 20]) -> Self {
-        Self(bytes)
     }
 }
 
