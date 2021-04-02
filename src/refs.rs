@@ -20,8 +20,8 @@ impl Refs {
         let mut lock = Lockfile::new(&self.head_path());
         lock.hold_for_update()?;
 
-        lock.write(&oid.as_str()?)?;
-        lock.write("\n")?;
+        lock.write(&oid.as_str()?.as_bytes())?;
+        lock.write(b"\n")?;
 
         lock.commit()?;
 

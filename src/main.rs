@@ -62,10 +62,8 @@ fn main() -> anyhow::Result<()> {
                     let data = ws
                         .read_file(&path)
                         .with_context(|| format!("Couldn't load data from {:?}", &path))?;
-                    let mut blob = Blob::new(data);
-                    let blob_oid = db
-                        .store(&mut blob)
-                        .with_context(|| "Could not store blob")?;
+                    let blob = Blob::new(data);
+                    let blob_oid = db.store(&blob).with_context(|| "Could not store blob")?;
 
                     let mode = ws.stat_file(&path)?;
 
@@ -76,7 +74,7 @@ fn main() -> anyhow::Result<()> {
             let mut root = Tree::build(entries);
             root.traverse(&|tree| db.store(tree))?;
 
-            let root_oid = db.store(&mut root)?;
+            let root_oid = db.store(&root)?;
 
             let parent = refs.read_head();
             let name = env::var("GIT_AUTHOR_NAME")
@@ -93,10 +91,10 @@ fn main() -> anyhow::Result<()> {
                     let str = String::from_utf8(msg).ok()?;
                     Some(str)
                 })
-                .ok_or(anyhow!("No commit message, aborting"))?;
+                .ok_or_else(|| anyhow!("No commit message, aborting"))?;
 
-            let mut commit = Commit::new(parent.as_deref(), root_oid, author, msg);
-            let commit_oid = db.store(&mut commit)?;
+            let commit = Commit::new(parent.as_deref(), root_oid, author, msg);
+            let commit_oid = db.store(&commit)?;
 
             refs.update_head(&commit_oid)?;
 

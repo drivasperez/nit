@@ -6,11 +6,16 @@ use std::{
     path::Path,
 };
 
+use anyhow::anyhow;
+
+use sha1::{Digest, Sha1};
+
 use crate::{database::ObjectId, lockfile::Lockfile, utils::is_executable};
 
 pub struct Index {
     lockfile: Lockfile,
     entries: HashMap<OsString, Entry>,
+    digest: Option<Sha1>,
 }
 
 const MAX_PATH_SIZE: u16 = 0xfff;
@@ -70,6 +75,11 @@ impl Entry {
             ino,
         }
     }
+
+    pub fn bytes(&self) -> Vec<u8> {
+        let bytes = Vec::new();
+        bytes
+    }
 }
 
 impl Index {
@@ -78,6 +88,7 @@ impl Index {
         Self {
             lockfile,
             entries: HashMap::new(),
+            digest: None,
         }
     }
 
@@ -87,7 +98,48 @@ impl Index {
         self.entries.insert(path, entry);
     }
 
-    pub fn write_updates(&self) -> anyhow::Result<()> {
-        todo!()
+    pub fn write_updates(&mut self) -> anyhow::Result<()> {
+        self.lockfile.hold_for_update()?;
+
+        self.begin_write();
+        let mut header: Vec<u8> = Vec::new();
+        header.extend_from_slice(b"DIRC");
+        header.extend_from_slice(&2_u32.to_be_bytes());
+        header.extend_from_slice(&(self.entries.len() as u32).to_be_bytes());
+        self.write(&header)?;
+        let mut body = Vec::new();
+        for (_, entry) in &self.entries {
+            body.extend_from_slice(&entry.bytes());
+        }
+        self.write(&body)?;
+
+        self.finish_write()?;
+
+        Ok(())
+    }
+
+    fn begin_write(&mut self) {
+        self.digest = Some(Sha1::new());
+    }
+
+    fn write(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
+        self.lockfile.write(&bytes)?;
+        self.digest
+            .as_mut()
+            .ok_or_else(|| anyhow!("Index digest was uninitialised"))?
+            .update(bytes);
+        Ok(())
+    }
+
+    fn finish_write(&mut self) -> anyhow::Result<()> {
+        let digest = self
+            .digest
+            .take()
+            .ok_or_else(|| anyhow!("Index digest was uninitialised"))?
+            .finalize();
+
+        self.lockfile.write(&digest)?;
+        self.lockfile.commit()?;
+        Ok(())
     }
 }

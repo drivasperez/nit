@@ -31,7 +31,7 @@ impl Workspace {
             if !&[".", "..", ".git"].iter().any(|&s| path.ends_with(s)) {
                 let file_name = path
                     .file_name()
-                    .ok_or(anyhow!("Couldn't get path filename"))?
+                    .ok_or_else(|| anyhow!("Couldn't get path filename"))?
                     .to_owned();
 
                 file_names.push(file_name);
@@ -49,13 +49,13 @@ impl Workspace {
                 } else {
                     // It's a file, add it to the list
                     Ok(vec![crate::utils::diff_paths(path, &self.pathname)
-                        .ok_or(anyhow!("Couldn't get relative path"))?
+                        .ok_or_else(|| anyhow!("Couldn't get relative path"))?
                         .as_os_str()
                         .to_owned()])
                 }
             })
             .flat_map(|result| match result {
-                Ok(vec) => vec.into_iter().map(|item| Ok(item)).collect(),
+                Ok(vec) => vec.into_iter().map(Ok).collect(),
                 Err(e) => vec![Err(e)],
             })
             .collect();

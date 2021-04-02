@@ -40,7 +40,6 @@ impl Lockfile {
             file_path,
             lock_path,
         }
-
     }
 
     pub fn hold_for_update(&mut self) -> anyhow::Result<bool> {
@@ -68,10 +67,10 @@ impl Lockfile {
         Ok(true)
     }
 
-    pub fn write(&mut self, contents: &str) -> anyhow::Result<()> {
+    pub fn write(&mut self, contents: &[u8]) -> anyhow::Result<()> {
         let lock = self.lock.as_mut().ok_or(LockfileError::StaleLock)?;
 
-        lock.write(contents.as_bytes())
+        lock.write(contents)
             .map_err(|e| LockfileError::UnexpectedError(e.kind()))
             .context("Couldn't write to lock file")?;
 
