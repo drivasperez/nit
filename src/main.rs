@@ -52,13 +52,16 @@ fn main() -> anyhow::Result<()> {
             let mut index = Index::new(&git_path.join("index"));
             for path in paths {
                 let path = PathBuf::from_str(&path)?;
+                let path = std::fs::canonicalize(&path)?;
 
-                let data = ws.read_file(&path)?;
-                let stat = ws.stat_file(&path)?;
+                for pathname in ws.list_files(&path)? {
+                    let data = ws.read_file(&pathname)?;
+                    let stat = ws.stat_file(&pathname)?;
 
-                let blob = Blob::new(data);
-                let blob_oid = db.store(&blob)?;
-                index.add(path, blob_oid, stat);
+                    let blob = Blob::new(data);
+                    let blob_oid = db.store(&blob)?;
+                    index.add(pathname, blob_oid, stat);
+                }
             }
             index.write_updates()?;
         }
@@ -72,7 +75,7 @@ fn main() -> anyhow::Result<()> {
             let refs = Refs::new(&git_path);
 
             let entries = ws
-                .list_files()?
+                .list_files_in_root()?
                 .iter()
                 .map(|path| {
                     let data = ws
