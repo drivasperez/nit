@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     ffi::{OsStr, OsString},
     fs::Metadata,
     os::unix::prelude::{MetadataExt, OsStrExt},
@@ -11,12 +11,6 @@ use anyhow::anyhow;
 use sha1::{Digest, Sha1};
 
 use crate::{database::ObjectId, lockfile::Lockfile, utils::is_executable};
-
-pub struct Index {
-    lockfile: Lockfile,
-    entries: HashMap<OsString, Entry>,
-    digest: Option<Sha1>,
-}
 
 const MAX_PATH_SIZE: u16 = 0xfff;
 const REGULAR_MODE: u32 = 0o100644;
@@ -116,13 +110,18 @@ impl Entry {
         bytes
     }
 }
+pub struct Index {
+    lockfile: Lockfile,
+    entries: BTreeMap<OsString, Entry>,
+    digest: Option<Sha1>,
+}
 
 impl Index {
     pub fn new(path: impl AsRef<Path>) -> Self {
         let lockfile = Lockfile::new(path.as_ref());
         Self {
             lockfile,
-            entries: HashMap::new(),
+            entries: BTreeMap::new(),
             digest: None,
         }
     }
