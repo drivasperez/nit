@@ -6,15 +6,99 @@ use std::{
     path::Path,
 };
 
-use anyhow::anyhow;
+use thiserror::Error;
 
 use sha1::{Digest, Sha1};
 
-use crate::{database::ObjectId, lockfile::Lockfile, utils::is_executable};
+use crate::{
+    database::ObjectId,
+    lockfile::{Lockfile, LockfileError},
+    utils::is_executable,
+};
 
 const MAX_PATH_SIZE: u16 = 0xfff;
 const REGULAR_MODE: u32 = 0o100644;
 const EXECUTABLE_MODE: u32 = 0o100755;
+
+#[derive(Debug, Error)]
+pub enum IndexError {
+    #[error("Could not write to lockfile: {0}")]
+    Lockfile(#[from] LockfileError),
+    #[error("Index's digest was uninitialised")]
+    DigestError,
+}
+
+pub struct Index {
+    lockfile: Lockfile,
+    entries: BTreeMap<OsString, Entry>,
+    digest: Option<Sha1>,
+}
+
+impl Index {
+    pub fn new(path: impl AsRef<Path>) -> Self {
+        let lockfile = Lockfile::new(path.as_ref());
+        Self {
+            lockfile,
+            entries: BTreeMap::new(),
+            digest: None,
+        }
+    }
+
+    pub fn add(&mut self, path: impl Into<OsString>, oid: ObjectId, metadata: Metadata) {
+        let path = path.into();
+        let entry = Entry::new(&path, oid, metadata);
+        self.entries.insert(path, entry);
+    }
+
+    pub fn load_for_update(&mut self) -> Result<(), IndexError> {
+        todo!()
+    }
+
+    pub fn write_updates(&mut self) -> Result<(), IndexError> {
+        self.lockfile.hold_for_update()?;
+
+        self.begin_write();
+        let mut header: Vec<u8> = Vec::new();
+        header.extend_from_slice(b"DIRC");
+        header.extend_from_slice(&2_u32.to_be_bytes());
+        header.extend_from_slice(&(self.entries.len() as u32).to_be_bytes());
+        self.write(&header)?;
+        let mut body = Vec::new();
+        for entry in self.entries.values() {
+            body.extend_from_slice(&entry.bytes());
+        }
+        self.write(&body)?;
+
+        self.finish_write()?;
+
+        Ok(())
+    }
+
+    fn begin_write(&mut self) {
+        self.digest = Some(Sha1::new());
+    }
+
+    fn write(&mut self, bytes: &[u8]) -> Result<(), IndexError> {
+        self.lockfile.write(&bytes)?;
+        self.digest
+            .as_mut()
+            .ok_or(IndexError::DigestError)?
+            .update(bytes);
+        Ok(())
+    }
+
+    fn finish_write(&mut self) -> Result<(), IndexError> {
+        let digest = self
+            .digest
+            .take()
+            .ok_or(IndexError::DigestError)?
+            .finalize();
+
+        self.lockfile.write(&digest)?;
+        self.lockfile.commit()?;
+        Ok(())
+    }
+}
 
 pub struct Entry {
     ctime: u32,
@@ -108,72 +192,5 @@ impl Entry {
         }
 
         bytes
-    }
-}
-pub struct Index {
-    lockfile: Lockfile,
-    entries: BTreeMap<OsString, Entry>,
-    digest: Option<Sha1>,
-}
-
-impl Index {
-    pub fn new(path: impl AsRef<Path>) -> Self {
-        let lockfile = Lockfile::new(path.as_ref());
-        Self {
-            lockfile,
-            entries: BTreeMap::new(),
-            digest: None,
-        }
-    }
-
-    pub fn add(&mut self, path: impl Into<OsString>, oid: ObjectId, metadata: Metadata) {
-        let path = path.into();
-        let entry = Entry::new(&path, oid, metadata);
-        self.entries.insert(path, entry);
-    }
-
-    pub fn write_updates(&mut self) -> anyhow::Result<()> {
-        self.lockfile.hold_for_update()?;
-
-        self.begin_write();
-        let mut header: Vec<u8> = Vec::new();
-        header.extend_from_slice(b"DIRC");
-        header.extend_from_slice(&2_u32.to_be_bytes());
-        header.extend_from_slice(&(self.entries.len() as u32).to_be_bytes());
-        self.write(&header)?;
-        let mut body = Vec::new();
-        for (_, entry) in &self.entries {
-            body.extend_from_slice(&entry.bytes());
-        }
-        self.write(&body)?;
-
-        self.finish_write()?;
-
-        Ok(())
-    }
-
-    fn begin_write(&mut self) {
-        self.digest = Some(Sha1::new());
-    }
-
-    fn write(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
-        self.lockfile.write(&bytes)?;
-        self.digest
-            .as_mut()
-            .ok_or_else(|| anyhow!("Index digest was uninitialised"))?
-            .update(bytes);
-        Ok(())
-    }
-
-    fn finish_write(&mut self) -> anyhow::Result<()> {
-        let digest = self
-            .digest
-            .take()
-            .ok_or_else(|| anyhow!("Index digest was uninitialised"))?
-            .finalize();
-
-        self.lockfile.write(&digest)?;
-        self.lockfile.commit()?;
-        Ok(())
     }
 }

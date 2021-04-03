@@ -1,8 +1,17 @@
 use std::{borrow::Cow, collections::BTreeMap, fs};
 use std::{ffi::OsString, os::unix::prelude::OsStrExt};
 use std::{os::unix::prelude::MetadataExt, path::PathBuf};
+use thiserror::Error;
 
 use crate::database::{Object, ObjectId};
+
+use super::DatabaseError;
+
+#[derive(Debug, Error)]
+pub enum TreeError {
+    #[error("Couldn't write to database: {0}")]
+    CouldNotWrite(#[from] DatabaseError),
+}
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum EntryMode {
     Executable,
@@ -47,7 +56,7 @@ pub enum TreeEntry {
     Object(Entry),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Tree {
     entries: BTreeMap<OsString, TreeEntry>,
 }
@@ -59,11 +68,11 @@ impl Tree {
         }
     }
 
-    pub fn traverse<F>(&mut self, func: &F) -> anyhow::Result<ObjectId>
+    pub fn traverse<F>(&mut self, func: &F) -> Result<ObjectId, TreeError>
     where
-        F: Fn(&Tree) -> anyhow::Result<ObjectId>,
+        F: Fn(&Tree) -> Result<ObjectId, TreeError>,
     {
-        for (_name, entry) in &mut self.entries {
+        for entry in self.entries.values_mut() {
             if let TreeEntry::Tree(tree, oid) = entry {
                 let tree_oid = tree.traverse(func)?;
                 *oid = Some(tree_oid);
@@ -93,7 +102,7 @@ impl Tree {
             let tree = self
                 .entries
                 .entry(parents[0].file_name().unwrap().to_owned())
-                .or_insert(TreeEntry::Tree(Tree::new(), None));
+                .or_insert_with(|| TreeEntry::Tree(Tree::new(), None));
 
             if let TreeEntry::Tree(tree, _) = tree {
                 tree.add_entry(
@@ -115,7 +124,7 @@ impl Object for Tree {
             .entries
             .iter()
             .flat_map(|(name, entry)| match &entry {
-                &TreeEntry::Object(entry) => {
+                TreeEntry::Object(entry) => {
                     let mut bytes = Vec::new();
                     bytes.extend_from_slice(match entry.mode {
                         EntryMode::Executable => EXECUTABLE_MODE,
@@ -127,7 +136,7 @@ impl Object for Tree {
                     bytes.extend_from_slice(entry.oid.bytes());
                     bytes
                 }
-                &TreeEntry::Tree(_, oid) => {
+                TreeEntry::Tree(_, oid) => {
                     let mut bytes = Vec::new();
                     bytes.extend_from_slice(DIRECTORY_MODE);
                     bytes.extend_from_slice(b" ");

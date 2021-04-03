@@ -1,6 +1,15 @@
-use crate::database::ObjectId;
 use crate::lockfile::Lockfile;
+use crate::{database::ObjectId, lockfile::LockfileError};
 use std::path::{Path, PathBuf};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum RefError {
+    #[error("Couldn't get lock: {0}")]
+    NoLock(#[from] LockfileError),
+    #[error("Couldn't get lockfile id: {0}")]
+    BadObjectId(#[from] std::fmt::Error),
+}
 
 pub struct Refs {
     pathname: PathBuf,
@@ -16,7 +25,7 @@ impl Refs {
         self.pathname.join("HEAD")
     }
 
-    pub fn update_head(&self, oid: &ObjectId) -> anyhow::Result<()> {
+    pub fn update_head(&self, oid: &ObjectId) -> Result<(), RefError> {
         let mut lock = Lockfile::new(&self.head_path());
         lock.hold_for_update()?;
 

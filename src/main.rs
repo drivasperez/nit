@@ -50,6 +50,7 @@ fn main() -> anyhow::Result<()> {
             let ws = Workspace::new(root_path);
             let db = Database::new(git_path.join("objects"));
             let mut index = Index::new(&git_path.join("index"));
+            index.load_for_update()?;
             for path in paths {
                 let path = PathBuf::from_str(&path)?;
                 let path = std::fs::canonicalize(&path)?;
@@ -91,7 +92,10 @@ fn main() -> anyhow::Result<()> {
                 .collect::<anyhow::Result<Vec<Entry>>>()?;
 
             let mut root = Tree::build(entries);
-            root.traverse(&|tree| db.store(tree))?;
+            root.traverse(&|tree| {
+                let oid = db.store(tree)?;
+                Ok(oid)
+            })?;
 
             let root_oid = db.store(&root)?;
 

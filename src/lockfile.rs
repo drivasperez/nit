@@ -1,5 +1,4 @@
 use crate::utils::add_extension;
-use anyhow::Context;
 use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
 use std::{
@@ -16,8 +15,8 @@ pub enum LockfileError {
     NoPermission,
     #[error("Lock was stale")]
     StaleLock,
-    #[error("Unexpected IO Error")]
-    UnexpectedError(std::io::ErrorKind),
+    #[error("Unexpected IO Error: {0}")]
+    IoError(#[from] std::io::Error),
 }
 
 // TODO: This API could be better. A call to hold_for_update() should return a struct with a write function.
@@ -42,7 +41,7 @@ impl Lockfile {
         }
     }
 
-    pub fn hold_for_update(&mut self) -> anyhow::Result<bool> {
+    pub fn hold_for_update(&mut self) -> Result<bool, LockfileError> {
         if self.lock.is_none() {
             let f = OpenOptions::new()
                 .read(true)
@@ -52,41 +51,33 @@ impl Lockfile {
                 .map_err(|e| match e.kind() {
                     ErrorKind::NotFound => (LockfileError::MissingParent),
                     ErrorKind::PermissionDenied => (LockfileError::NoPermission),
-                    e => LockfileError::UnexpectedError(e),
+                    _ => LockfileError::IoError(e),
                 });
 
-            if let Err(LockfileError::UnexpectedError(kind)) = f {
-                if kind == ErrorKind::AlreadyExists {
+            if let Err(LockfileError::IoError(e)) = f {
+                if e.kind() == ErrorKind::AlreadyExists {
                     return Ok(false);
                 }
             } else {
-                self.lock = Some(f.context("Couldn't take lock")?);
+                self.lock = Some(f?);
             }
         }
 
         Ok(true)
     }
 
-    pub fn write(&mut self, contents: &[u8]) -> anyhow::Result<()> {
+    pub fn write(&mut self, contents: &[u8]) -> Result<(), LockfileError> {
         let lock = self.lock.as_mut().ok_or(LockfileError::StaleLock)?;
 
-        lock.write(contents)
-            .map_err(|e| LockfileError::UnexpectedError(e.kind()))
-            .context("Couldn't write to lock file")?;
+        lock.write_all(contents)?;
 
         Ok(())
     }
 
-    pub fn commit(&mut self) -> anyhow::Result<()> {
-        let lock = self
-            .lock
-            .take()
-            .ok_or(LockfileError::StaleLock)
-            .context("Couldn't drop lock")?;
+    pub fn commit(&mut self) -> Result<(), LockfileError> {
+        let lock = self.lock.take().ok_or(LockfileError::StaleLock)?;
         drop(lock);
-        std::fs::rename(&self.lock_path, &self.file_path)
-            .map_err(|e| LockfileError::UnexpectedError(e.kind()))
-            .context("Couldn't rename lock file")?;
+        std::fs::rename(&self.lock_path, &self.file_path)?;
 
         Ok(())
     }
