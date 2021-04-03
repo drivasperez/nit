@@ -72,11 +72,13 @@ impl Workspace {
         self._list_files(None)
     }
 
+    /// Read a file's contents into a Vec<u8>, based on a path relative to this workspace's base directory.
     pub fn read_file<P: AsRef<Path>>(&self, path: P) -> Result<Vec<u8>, WorkspaceError> {
         let r = std::fs::read(&self.pathname.join(&path))?;
         Ok(r)
     }
 
+    /// Get a file's metadata, based on a path relative to this workspace's base directory.
     pub fn stat_file<P: AsRef<Path>>(&self, path: P) -> Result<Metadata, WorkspaceError> {
         let metadata = fs::metadata(&path)?;
         Ok(metadata)
