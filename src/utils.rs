@@ -1,6 +1,6 @@
 use std::path::{Component, Path, PathBuf};
 
-pub fn bytes_to_hex_string(bytes: &[u8]) -> anyhow::Result<String> {
+pub fn bytes_to_hex_string(bytes: &[u8]) -> Result<String, std::fmt::Error> {
     use core::fmt::Write;
     let mut s = String::with_capacity(bytes.len() * 2);
     for byte in bytes {

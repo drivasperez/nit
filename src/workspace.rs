@@ -1,10 +1,17 @@
-use anyhow::anyhow;
 use std::{
     ffi::OsString,
     fs::{self, Metadata},
-    io,
     path::{Path, PathBuf},
 };
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum WorkspaceError {
+    #[error("Unexpected IO Error: {0}")]
+    IoError(#[from] std::io::Error),
+    #[error("Couldn't get path: {0}")]
+    Path(PathBuf),
+}
 
 pub struct Workspace {
     pathname: PathBuf,
@@ -17,7 +24,7 @@ impl Workspace {
         }
     }
 
-    fn _list_files(&self, path: Option<&Path>) -> anyhow::Result<Vec<OsString>> {
+    fn _list_files(&self, path: Option<&Path>) -> Result<Vec<OsString>, WorkspaceError> {
         let path = path.unwrap_or(&self.pathname);
 
         let res = if std::fs::metadata(path)?.is_dir() {
@@ -28,7 +35,7 @@ impl Workspace {
                 if !&[".", "..", ".git"].iter().any(|&s| path.ends_with(s)) {
                     let file_name = path
                         .file_name()
-                        .ok_or_else(|| anyhow!("Couldn't get path filename"))?
+                        .ok_or_else(|| WorkspaceError::Path(path.clone()))?
                         .to_owned();
 
                     file_names.push(file_name);
@@ -44,7 +51,7 @@ impl Workspace {
                 .collect()
         } else {
             Ok(vec![crate::utils::diff_paths(path, &self.pathname)
-                .ok_or_else(|| anyhow!("Couldn't get relative path"))?
+                .ok_or_else(|| WorkspaceError::Path(path.to_owned()))?
                 .as_os_str()
                 .to_owned()])
         };
@@ -53,7 +60,7 @@ impl Workspace {
     }
 
     /// Lists all files in a path, relative to this workspace's base directory.
-    pub fn list_files<P>(&self, path: P) -> anyhow::Result<Vec<OsString>>
+    pub fn list_files<P>(&self, path: P) -> Result<Vec<OsString>, WorkspaceError>
     where
         P: AsRef<Path>,
     {
@@ -61,15 +68,16 @@ impl Workspace {
     }
 
     /// Lists all files in a workspace's base directory.
-    pub fn list_files_in_root(&self) -> anyhow::Result<Vec<OsString>> {
+    pub fn list_files_in_root(&self) -> Result<Vec<OsString>, WorkspaceError> {
         self._list_files(None)
     }
 
-    pub fn read_file<P: AsRef<Path>>(&self, path: P) -> io::Result<Vec<u8>> {
-        std::fs::read(&self.pathname.join(&path))
+    pub fn read_file<P: AsRef<Path>>(&self, path: P) -> Result<Vec<u8>, WorkspaceError> {
+        let r = std::fs::read(&self.pathname.join(&path))?;
+        Ok(r)
     }
 
-    pub fn stat_file<P: AsRef<Path>>(&self, path: P) -> io::Result<Metadata> {
+    pub fn stat_file<P: AsRef<Path>>(&self, path: P) -> Result<Metadata, WorkspaceError> {
         let metadata = fs::metadata(&path)?;
         Ok(metadata)
     }
