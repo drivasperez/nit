@@ -12,6 +12,22 @@ use std::{env, io::Read};
 use std::{fs, path::PathBuf, str::FromStr};
 use structopt::StructOpt;
 
+#[derive(Debug, StructOpt)]
+enum Opt {
+    /// Creates a new repository
+    Init {
+        #[structopt(default_value = ".")]
+        path: String,
+    },
+    /// Record changes to the repository
+    Commit {
+        #[structopt(long = "message", short = "m")]
+        message: Option<String>,
+    },
+    /// Add file contents to the index
+    Add { paths: Vec<String> },
+}
+
 fn main() -> anyhow::Result<()> {
     let opt = Opt::from_args();
 
@@ -28,22 +44,22 @@ fn main() -> anyhow::Result<()> {
                 git_path.to_str().unwrap_or("Unknown")
             );
         }
-        Opt::Add { path } => {
-            let path = PathBuf::from_str(&path)?;
+        Opt::Add { paths } => {
             let root_path = std::env::current_dir()?;
             let git_path = root_path.join(".git");
-
             let ws = Workspace::new(root_path);
             let db = Database::new(git_path.join("objects"));
             let mut index = Index::new(&git_path.join("index"));
+            for path in paths {
+                let path = PathBuf::from_str(&path)?;
 
-            let data = ws.read_file(&path)?;
-            let stat = ws.stat_file(&path)?;
+                let data = ws.read_file(&path)?;
+                let stat = ws.stat_file(&path)?;
 
-            let blob = Blob::new(data);
-            let blob_oid = db.store(&blob)?;
-            index.add(path, blob_oid, stat);
-
+                let blob = Blob::new(data);
+                let blob_oid = db.store(&blob)?;
+                index.add(path, blob_oid, stat);
+            }
             index.write_updates()?;
         }
         Opt::Commit { message } => {
@@ -113,20 +129,4 @@ fn main() -> anyhow::Result<()> {
     };
 
     Ok(())
-}
-
-#[derive(Debug, StructOpt)]
-enum Opt {
-    /// Creates a new repository
-    Init {
-        #[structopt(default_value = ".")]
-        path: String,
-    },
-    /// Record changes to the repository
-    Commit {
-        #[structopt(long = "message", short = "m")]
-        message: Option<String>,
-    },
-    /// Add file contents to the index
-    Add { path: String },
 }
