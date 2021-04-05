@@ -27,6 +27,8 @@ pub fn is_executable(mode: u32) -> bool {
     mode & 0o111 != 0
 }
 
+/// Pull the first N elements from the front of a Vec, returning an array of length N.
+/// Panics if you drain past the end of the vector.
 pub fn drain_to_array<T: Default + Copy, const N: usize>(data: &mut Vec<T>) -> [T; N] {
     let mut arr = [T::default(); N];
     let drain = data.drain(0..N);
