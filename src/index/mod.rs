@@ -215,7 +215,7 @@ mod test {
     fn startup() -> Scaffold {
         let f = PathBuf::from(file!());
         let current_dir = f.parent().unwrap();
-        let tmp_path = std::fs::canonicalize(PathBuf::from(current_dir).join("../tmp")).unwrap();
+        let tmp_path = std::fs::canonicalize(PathBuf::from(current_dir).join("../../tmp")).unwrap();
         let index_path = tmp_path.join("index");
 
         let stat = std::fs::metadata(file!()).unwrap();
@@ -272,6 +272,27 @@ mod test {
 
         index.add("alice.txt", oid.clone(), stat.clone());
         index.add("nested/bob.txt", oid.clone(), stat.clone());
+
+        index.add("nested", oid, stat);
+
+        assert_eq!(
+            vec!["alice.txt", "nested"],
+            index.entries().keys().cloned().collect::<Vec<OsString>>()
+        );
+    }
+
+    #[test]
+    fn recursively_replaces_a_directory_with_a_file() {
+        let Scaffold {
+            mut index,
+            stat,
+            oid,
+        } = startup();
+
+        index.add("alice.txt", oid.clone(), stat.clone());
+        index.add("nested/bob.txt", oid.clone(), stat.clone());
+        index.add("nested/inner/claire.txt", oid.clone(), stat.clone());
+        index.add("nested/another_inner/eve.txt", oid.clone(), stat.clone());
 
         index.add("nested", oid, stat);
 
