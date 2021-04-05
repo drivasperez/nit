@@ -96,7 +96,6 @@ impl Index {
             self.lockfile.rollback()?;
         }
 
-        dbg!(&self.lockfile);
         let has_lock = self.lockfile.hold_for_update()?;
 
         if !has_lock {
