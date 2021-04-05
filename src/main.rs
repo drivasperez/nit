@@ -109,8 +109,8 @@ fn main() -> anyhow::Result<()> {
             refs.update_head(&commit_oid)?;
 
             let root_msg = match parent {
-                Some(_) => "(root-commit) ",
-                None => "",
+                Some(_) => "",
+                None => "(root-commit) ",
             };
 
             println!(
