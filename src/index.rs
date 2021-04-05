@@ -187,9 +187,7 @@ impl Index {
                 entry.extend_from_slice(&reader.read(ENTRY_BLOCK)?);
             }
 
-            println!("Bytes: {:?}", &entry);
             let entry = Entry::parse(entry)?;
-            println!("Parsed: {:#?}", &entry);
             self.store_entry(entry);
         }
 
