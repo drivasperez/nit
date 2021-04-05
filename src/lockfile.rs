@@ -66,10 +66,12 @@ impl Lockfile {
         Ok(true)
     }
 
-    pub fn write(&mut self, contents: &[u8]) -> Result<(), LockfileError> {
-        let lock = self.lock.as_mut().ok_or(LockfileError::StaleLock)?;
+    pub fn lock(&mut self) -> Result<&mut File, LockfileError> {
+        self.lock.as_mut().ok_or(LockfileError::StaleLock)
+    }
 
-        lock.write_all(contents)?;
+    pub fn write(&mut self, contents: &[u8]) -> Result<(), LockfileError> {
+        self.lock()?.write_all(contents)?;
 
         Ok(())
     }
@@ -78,6 +80,14 @@ impl Lockfile {
         let lock = self.lock.take().ok_or(LockfileError::StaleLock)?;
         drop(lock);
         std::fs::rename(&self.lock_path, &self.file_path)?;
+
+        Ok(())
+    }
+
+    pub fn rollback(&mut self) -> Result<(), LockfileError> {
+        let f = self.lock.take().ok_or(LockfileError::StaleLock)?;
+        drop(f);
+        std::fs::remove_file(&self.lock_path)?;
 
         Ok(())
     }
