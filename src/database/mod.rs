@@ -61,6 +61,12 @@ impl Display for ObjectId {
     }
 }
 
+impl From<[u8; 20]> for ObjectId {
+    fn from(arr: [u8; 20]) -> Self {
+        Self(arr)
+    }
+}
+
 pub trait Object {
     fn data(&self) -> Cow<[u8]>;
     fn kind(&self) -> &str;

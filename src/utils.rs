@@ -27,6 +27,17 @@ pub fn is_executable(mode: u32) -> bool {
     mode & 0o111 != 0
 }
 
+pub fn drain_to_array<T: Default + Copy, const N: usize>(data: &mut Vec<T>) -> [T; N] {
+    let mut arr = [T::default(); N];
+    let drain = data.drain(0..N);
+
+    for (i, item) in drain.into_iter().enumerate() {
+        arr[i] = item;
+    }
+
+    arr
+}
+
 // https://github.com/Manishearth/pathdiff/blob/master/src/lib.rs
 pub fn diff_paths<P, B>(path: P, base: B) -> Option<PathBuf>
 where
@@ -70,5 +81,22 @@ where
             }
         }
         Some(comps.iter().map(|c| c.as_os_str()).collect())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn drain_array() {
+        let mut v = vec![0, 1, 2, 3, 4, 5];
+        let arr: [u8; 3] = drain_to_array(&mut v);
+
+        assert_eq!(arr, [0, 1, 2]);
+        assert_eq!(v, vec![3, 4, 5]);
+
+        let arr: [u8; 3] = drain_to_array(&mut v);
+        assert_eq!(arr, [3, 4, 5]);
+        assert_eq!(v, vec![]);
     }
 }

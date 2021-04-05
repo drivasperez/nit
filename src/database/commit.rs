@@ -26,8 +26,7 @@ impl Commit {
 
 impl Object for Commit {
     fn data(&self) -> Cow<[u8]> {
-        let mut data = Vec::new();
-        data.push(format!("tree {}", self.tree));
+        let mut data = vec![format!("tree {}", self.tree)];
         if let Some(p) = &self.parent {
             data.push(format!("parent {}", p));
         }
