@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
     ffi::{OsStr, OsString},
-    fs::Metadata,
+    fs::{File, Metadata},
     io::{Read, Write},
     os::unix::prelude::{MetadataExt, OsStrExt, OsStringExt},
     path::{Path, PathBuf},
@@ -69,15 +69,9 @@ impl Index {
         self.changed = true;
     }
 
-    pub fn load_for_update(&mut self) -> Result<bool, IndexError> {
-        let res = if self.lockfile.hold_for_update()? {
-            self.load()?;
-            true
-        } else {
-            false
-        };
-
-        Ok(res)
+    pub fn load_for_update(&mut self) -> Result<(), IndexError> {
+        self.load()?;
+        Ok(())
     }
 
     pub fn write_updates(&mut self) -> Result<(), IndexError> {
@@ -85,7 +79,13 @@ impl Index {
             self.lockfile.rollback()?;
         }
 
-        self.lockfile.hold_for_update()?;
+        dbg!(&self.lockfile);
+        let has_lock = self.lockfile.hold_for_update()?;
+
+        if !has_lock {
+            panic!("Couldn't write updates")
+        };
+
         let mut writer = Checksum::new(&mut self.lockfile);
 
         let mut header: Vec<u8> = Vec::new();
@@ -104,6 +104,7 @@ impl Index {
 
         writer.write_checksum()?;
 
+        self.lockfile.commit()?;
         self.changed = false;
 
         Ok(())
@@ -116,24 +117,32 @@ impl Index {
 
     fn load(&mut self) -> Result<(), IndexError> {
         self.clear();
-        let mut lockfile = self.open_index_file();
-        lockfile.hold_for_update()?;
-        let mut reader = Checksum::new(&mut lockfile);
-        let count = self.read_header(&mut reader)?;
-        self.read_entries(&mut reader, count)?;
-        reader.verify_checksum()?;
+        let file = self.open_index_file()?;
 
-        // We're just reading, no need to commit.
-        lockfile.rollback()?;
+        if let Some(mut f) = file {
+            let mut reader = Checksum::new(&mut f);
+            let count = self.read_header(&mut reader)?;
+            self.read_entries(&mut reader, count)?;
+            reader.verify_checksum()?;
+        }
 
         Ok(())
     }
 
-    fn open_index_file(&self) -> Lockfile {
-        Lockfile::new(&self.pathname)
+    fn open_index_file(&self) -> Result<Option<File>, IndexError> {
+        match File::open(&self.pathname) {
+            Ok(f) => Ok(Some(f)),
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    Ok(None)
+                } else {
+                    Err(e.into())
+                }
+            }
+        }
     }
 
-    fn read_header(&self, reader: &mut Checksum) -> Result<usize, IndexError> {
+    fn read_header<T: Read + Write>(&self, reader: &mut Checksum<T>) -> Result<usize, IndexError> {
         let data = reader.read(HEADER_SIZE)?;
         let signature = std::str::from_utf8(&data[0..4]).map_err(|_| IndexError::BadHeader)?;
 
@@ -156,7 +165,11 @@ impl Index {
         Ok(count as usize)
     }
 
-    fn read_entries(&mut self, reader: &mut Checksum, count: usize) -> Result<(), IndexError> {
+    fn read_entries<T: Read + Write>(
+        &mut self,
+        reader: &mut Checksum<T>,
+        count: usize,
+    ) -> Result<(), IndexError> {
         // Entries are at least 64 bytes...
         const ENTRY_MIN_SIZE: usize = 64;
         // ...and are padded with null bytes to always have a length divisible by 8.
@@ -194,20 +207,26 @@ pub enum ChecksumError {
 }
 
 const CHECKSUM_SIZE: usize = 20;
-struct Checksum<'a> {
-    lockfile: &'a mut Lockfile,
+struct Checksum<'a, T>
+where
+    T: Read + Write,
+{
+    file: &'a mut T,
     digest: Sha1,
 }
 
-impl<'a> Checksum<'a> {
-    pub fn new(lockfile: &'a mut Lockfile) -> Self {
+impl<'a, T> Checksum<'a, T>
+where
+    T: Read + Write,
+{
+    pub fn new(file: &'a mut T) -> Self {
         let digest = Sha1::new();
-        Self { lockfile, digest }
+        Self { file, digest }
     }
 
     pub fn read(&mut self, size: usize) -> Result<Vec<u8>, ChecksumError> {
         let mut data = vec![0; size];
-        self.lockfile.lock()?.read_exact(&mut data)?;
+        self.file.read_exact(&mut data)?;
 
         self.digest.update(&data);
         Ok(data)
@@ -215,7 +234,7 @@ impl<'a> Checksum<'a> {
 
     pub fn verify_checksum(&mut self) -> Result<(), ChecksumError> {
         let mut data = vec![0; CHECKSUM_SIZE];
-        self.lockfile.lock()?.read_exact(&mut data)?;
+        self.file.read_exact(&mut data)?;
 
         if self.digest.clone().finalize().as_slice() != data {
             Err(ChecksumError::BadChecksum)
@@ -225,7 +244,7 @@ impl<'a> Checksum<'a> {
     }
 
     fn write(&mut self, bytes: &[u8]) -> Result<(), IndexError> {
-        self.lockfile.lock()?.write_all(bytes)?;
+        self.file.write_all(bytes)?;
         self.digest.update(bytes);
         Ok(())
     }
@@ -233,8 +252,7 @@ impl<'a> Checksum<'a> {
     fn write_checksum(self) -> Result<(), IndexError> {
         let digest = self.digest.finalize();
 
-        self.lockfile.write(&digest)?;
-        self.lockfile.commit()?;
+        self.file.write_all(&digest)?;
         Ok(())
     }
 }
