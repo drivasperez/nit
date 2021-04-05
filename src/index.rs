@@ -66,6 +66,7 @@ impl Index {
     pub fn add(&mut self, path: impl Into<OsString>, oid: ObjectId, metadata: Metadata) {
         let path = path.into();
         let entry = Entry::new(&path, oid, metadata);
+        self.discard_conflicts(&entry);
         self.entries.insert(path, entry);
         self.changed = true;
     }
@@ -196,6 +197,12 @@ impl Index {
 
     fn store_entry(&mut self, entry: Entry) {
         self.entries.insert(entry.path.clone(), entry);
+    }
+
+    fn discard_conflicts(&mut self, entry: &Entry) {
+        for path in entry.parent_directories() {
+            self.entries.remove(path.as_os_str());
+        }
     }
 }
 
