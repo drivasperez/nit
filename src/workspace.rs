@@ -6,6 +6,7 @@ use std::{
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum WorkspaceError {
     #[error("Unexpected IO Error: {0}")]
     IoError(#[from] std::io::Error),

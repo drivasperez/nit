@@ -1,3 +1,7 @@
+use crate::{
+    database::ObjectId,
+    lockfile::{Lockfile, LockfileError},
+};
 use std::{
     collections::BTreeMap,
     ffi::OsString,
@@ -5,19 +9,13 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
 };
-
 use thiserror::Error;
-
-use crate::{
-    database::ObjectId,
-    lockfile::{Lockfile, LockfileError},
-};
-
-use checksum::{Checksum, ChecksumError};
-use entry::Entry;
 
 mod checksum;
 pub mod entry;
+
+use checksum::{Checksum, ChecksumError};
+use entry::Entry;
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
