@@ -1,5 +1,6 @@
 use crate::lockfile::Lockfile;
 use crate::{database::ObjectId, lockfile::LockfileError};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -7,6 +8,8 @@ use thiserror::Error;
 pub enum RefError {
     #[error("Couldn't get lock: {0}")]
     NoLock(#[from] LockfileError),
+    #[error("Couildn't write to lockfile: {0}")]
+    CouldNotWrite(#[from] std::io::Error),
     #[error("Couldn't get lockfile id: {0}")]
     BadObjectId(#[from] std::fmt::Error),
 }
@@ -29,8 +32,8 @@ impl Refs {
         let mut lock = Lockfile::new(&self.head_path());
         lock.hold_for_update()?;
 
-        lock.write(&oid.as_str()?.as_bytes())?;
-        lock.write(b"\n")?;
+        lock.write_all(&oid.as_str()?.as_bytes())?;
+        lock.write_all(b"\n")?;
 
         lock.commit()?;
 
