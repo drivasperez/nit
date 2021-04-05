@@ -9,6 +9,7 @@ use crate::index::entry::Entry;
 use super::DatabaseError;
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum TreeError {
     #[error("Couldn't write to database: {0}")]
     CouldNotWrite(#[from] DatabaseError),

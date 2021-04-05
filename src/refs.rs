@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum RefError {
     #[error("Couldn't get lock: {0}")]
     NoLock(#[from] LockfileError),

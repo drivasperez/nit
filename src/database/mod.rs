@@ -24,6 +24,7 @@ pub use commit::*;
 pub use tree::*;
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum DatabaseError {
     #[error("Couldn't read oid")]
     BadObjectId(#[from] std::fmt::Error),
