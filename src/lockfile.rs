@@ -1,5 +1,6 @@
 use crate::utils::add_extension;
-use std::io::{ErrorKind, Write};
+use std::io;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::{
     fs::{File, OpenOptions},
@@ -21,6 +22,7 @@ pub enum LockfileError {
 
 // TODO: This API could be better. A call to hold_for_update() should return a struct with a write function.
 // Dropping the struct would commit and close the file.
+#[derive(Debug)]
 pub struct Lockfile {
     file_path: PathBuf,
     lock_path: PathBuf,
@@ -49,13 +51,13 @@ impl Lockfile {
                 .create_new(true)
                 .open(&self.lock_path)
                 .map_err(|e| match e.kind() {
-                    ErrorKind::NotFound => (LockfileError::MissingParent),
-                    ErrorKind::PermissionDenied => (LockfileError::NoPermission),
+                    io::ErrorKind::NotFound => (LockfileError::MissingParent),
+                    io::ErrorKind::PermissionDenied => (LockfileError::NoPermission),
                     _ => LockfileError::IoError(e),
                 });
 
             if let Err(LockfileError::IoError(e)) = f {
-                if e.kind() == ErrorKind::AlreadyExists {
+                if e.kind() == io::ErrorKind::AlreadyExists {
                     return Ok(false);
                 }
             } else {
@@ -77,7 +79,7 @@ impl Lockfile {
     }
 
     pub fn commit(&mut self) -> Result<(), LockfileError> {
-        let lock = self.lock.take().ok_or(LockfileError::StaleLock)?;
+        let lock = self.lock.take().ok_or(LockfileError::StaleLock);
         drop(lock);
         std::fs::rename(&self.lock_path, &self.file_path)?;
 
@@ -85,10 +87,35 @@ impl Lockfile {
     }
 
     pub fn rollback(&mut self) -> Result<(), LockfileError> {
-        let f = self.lock.take().ok_or(LockfileError::StaleLock)?;
-        drop(f);
+        let lock = self.lock.take().ok_or(LockfileError::StaleLock);
+        drop(lock);
         std::fs::remove_file(&self.lock_path)?;
 
         Ok(())
+    }
+}
+
+impl From<LockfileError> for std::io::Error {
+    fn from(err: LockfileError) -> Self {
+        std::io::Error::new(
+            io::ErrorKind::Other,
+            format!("Could get lock for file: {}", err),
+        )
+    }
+}
+
+impl Read for Lockfile {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.lock()?.read(buf)
+    }
+}
+
+impl Write for Lockfile {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.lock()?.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.lock()?.flush()
     }
 }
