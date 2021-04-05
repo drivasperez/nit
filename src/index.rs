@@ -182,7 +182,7 @@ impl Index {
             let mut entry = reader.read(ENTRY_MIN_SIZE)?;
 
             // Entries are null-terminated.
-            // We just read 64 bytes into this vector so we can unwrap .last().
+            // We just read 64 bytes into this vector so we can safely unwrap .last().
             while entry.last().unwrap() != &b'\0' {
                 entry.extend_from_slice(&reader.read(ENTRY_BLOCK)?);
             }
@@ -415,5 +415,67 @@ impl Entry {
     /// Get a reference to the entry's ObjectId.
     pub fn oid(&self) -> &ObjectId {
         &self.oid
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::path::PathBuf;
+
+    struct Scaffold {
+        index: Index,
+        oid: ObjectId,
+        stat: Metadata,
+    }
+
+    fn startup() -> Scaffold {
+        let f = PathBuf::from(file!());
+        let current_dir = f.parent().unwrap();
+        let tmp_path = std::fs::canonicalize(PathBuf::from(current_dir).join("../tmp")).unwrap();
+        let index_path = tmp_path.join("index");
+
+        let stat = std::fs::metadata(file!()).unwrap();
+        let oid = ObjectId::from([12; 20]);
+
+        Scaffold {
+            index: Index::new(index_path),
+            stat,
+            oid,
+        }
+    }
+
+    #[test]
+    fn adds_a_single_file() {
+        let Scaffold {
+            mut index,
+            stat,
+            oid,
+        } = startup();
+
+        index.add("alice.txt", oid, stat);
+        assert_eq!(
+            vec!["alice.txt"],
+            index.entries().keys().cloned().collect::<Vec<OsString>>()
+        );
+    }
+
+    #[test]
+    fn replaces_a_file_with_a_directory() {
+        let Scaffold {
+            mut index,
+            stat,
+            oid,
+        } = startup();
+
+        index.add("alice.txt", oid.clone(), stat.clone());
+        index.add("bob.txt", oid.clone(), stat.clone());
+
+        index.add("alice.txt/nested.txt", oid, stat);
+
+        assert_eq!(
+            vec!["alice.txt/nested.txt", "bob.txt"],
+            index.entries().keys().cloned().collect::<Vec<OsString>>()
+        );
     }
 }
