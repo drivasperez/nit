@@ -3,7 +3,11 @@ use std::{ffi::OsString, os::unix::prelude::OsStrExt};
 use std::{os::unix::prelude::MetadataExt, path::PathBuf};
 use thiserror::Error;
 
-use crate::database::{Object, ObjectId};
+use crate::index::Entry;
+use crate::{
+    database::{Object, ObjectId},
+    utils::is_executable,
+};
 
 use super::DatabaseError;
 
@@ -25,28 +29,6 @@ impl From<fs::Metadata> for EntryMode {
             true => Self::Executable,
             false => Self::Regular,
         }
-    }
-}
-#[derive(Debug, PartialEq)]
-pub struct Entry {
-    name: OsString,
-    oid: ObjectId,
-    mode: EntryMode,
-}
-
-impl Entry {
-    pub fn new(path: &OsString, oid: ObjectId, mode: EntryMode) -> Self {
-        let name = path.to_owned();
-        Self { name, oid, mode }
-    }
-
-    pub fn parent_directories(&self) -> Vec<PathBuf> {
-        let path = PathBuf::from(&self.name);
-        let mut directories: Vec<_> = path.ancestors().map(|c| c.to_owned()).skip(1).collect();
-
-        directories.pop();
-
-        directories.into_iter().rev().collect()
     }
 }
 
@@ -83,7 +65,7 @@ impl Tree {
     }
 
     pub fn build(mut entries: Vec<Entry>) -> Self {
-        entries.sort_by(|a, b| a.name.cmp(&b.name));
+        entries.sort_by(|a, b| a.path().cmp(&b.path()));
         let mut root = Tree::new();
 
         for entry in entries {
@@ -97,7 +79,7 @@ impl Tree {
     pub fn add_entry(&mut self, parents: Vec<PathBuf>, entry: Entry) {
         if parents.is_empty() {
             self.entries
-                .insert(entry.name.clone(), TreeEntry::Object(entry));
+                .insert(entry.path().clone(), TreeEntry::Object(entry));
         } else {
             let tree = self
                 .entries
@@ -114,9 +96,7 @@ impl Tree {
     }
 }
 
-const REGULAR_MODE: &[u8] = b"100644";
-const EXECUTABLE_MODE: &[u8] = b"100755";
-const DIRECTORY_MODE: &[u8] = b"40000";
+const DIRECTORY_MODE: u32 = 0o40000;
 
 impl Object for Tree {
     fn data(&self) -> Cow<[u8]> {
@@ -126,19 +106,16 @@ impl Object for Tree {
             .flat_map(|(name, entry)| match &entry {
                 TreeEntry::Object(entry) => {
                     let mut bytes = Vec::new();
-                    bytes.extend_from_slice(match entry.mode {
-                        EntryMode::Executable => EXECUTABLE_MODE,
-                        EntryMode::Regular => REGULAR_MODE,
-                    });
+                    bytes.extend_from_slice(format!("{:o}", entry.mode()).as_bytes());
                     bytes.extend_from_slice(b" ");
                     bytes.extend_from_slice(name.as_bytes());
                     bytes.push(b'\0');
-                    bytes.extend_from_slice(entry.oid.bytes());
+                    bytes.extend_from_slice(entry.oid().bytes());
                     bytes
                 }
                 TreeEntry::Tree(_, oid) => {
                     let mut bytes = Vec::new();
-                    bytes.extend_from_slice(DIRECTORY_MODE);
+                    bytes.extend_from_slice(format!("{:o}", DIRECTORY_MODE).as_bytes());
                     bytes.extend_from_slice(b" ");
                     bytes.extend_from_slice(name.as_bytes());
                     bytes.push(b'\0');
@@ -165,17 +142,16 @@ mod test {
 
     #[test]
     fn parent_directories() {
-        let entry = Entry {
-            name: r"bin/nested/jit".into(),
-            oid: ObjectId([0; 20]),
-            mode: EntryMode::Executable,
-        };
+        {
+            let metadata = fs::metadata("./Cargo.toml").unwrap();
+            let entry = Entry::new(&r"bin/nested/jit", ObjectId([0; 20]), metadata);
 
-        let parents = entry.parent_directories();
+            let parents = entry.parent_directories();
 
-        assert_eq!(
-            parents,
-            vec![PathBuf::from("bin"), PathBuf::from("bin/nested")]
-        )
+            assert_eq!(
+                parents,
+                vec![PathBuf::from("bin"), PathBuf::from("bin/nested")]
+            );
+        }
     }
 }

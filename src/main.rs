@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use anyhow::Context;
 use chrono::Utc;
 use nit::{
-    database::{Author, Blob, Commit, Database, Entry, EntryMode, Tree},
+    database::{Author, Blob, Commit, Database, Tree},
     index::Index,
     refs::Refs,
     workspace::Workspace,
@@ -70,28 +70,15 @@ fn main() -> anyhow::Result<()> {
             let root_path = std::env::current_dir()?;
             let git_path = root_path.join(".git");
             let db_path = git_path.join("objects");
+            let index_path = git_path.join("index");
 
-            let ws = Workspace::new(root_path);
             let db = Database::new(db_path);
+            let mut index = Index::new(index_path);
             let refs = Refs::new(&git_path);
 
-            let entries = ws
-                .list_files_in_root()?
-                .iter()
-                .map(|path| {
-                    let data = ws
-                        .read_file(&path)
-                        .with_context(|| format!("Couldn't load data from {:?}", &path))?;
-                    let blob = Blob::new(data);
-                    let blob_oid = db.store(&blob).with_context(|| "Could not store blob")?;
+            index.load()?;
 
-                    let mode = ws.stat_file(&path)?;
-
-                    Ok(Entry::new(path, blob_oid, EntryMode::from(mode)))
-                })
-                .collect::<anyhow::Result<Vec<Entry>>>()?;
-
-            let mut root = Tree::build(entries);
+            let mut root = Tree::build(index.entries().values().cloned().collect());
             root.traverse(&|tree| {
                 let oid = db.store(tree)?;
                 Ok(oid)
