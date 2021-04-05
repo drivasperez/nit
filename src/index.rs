@@ -69,9 +69,26 @@ impl Index {
         self.changed = true;
     }
 
-    pub fn load_for_update(&mut self) -> Result<(), IndexError> {
-        self.load()?;
+    pub fn entries(&self) -> &BTreeMap<OsString, Entry> {
+        &self.entries
+    }
+
+    pub fn load(&mut self) -> Result<(), IndexError> {
+        self.clear();
+        let file = self.open_index_file()?;
+
+        if let Some(mut f) = file {
+            let mut reader = Checksum::new(&mut f);
+            let count = self.read_header(&mut reader)?;
+            self.read_entries(&mut reader, count)?;
+            reader.verify_checksum()?;
+        }
+
         Ok(())
+    }
+
+    pub fn load_for_update(&mut self) -> Result<(), IndexError> {
+        self.load()
     }
 
     pub fn write_updates(&mut self) -> Result<(), IndexError> {
@@ -113,20 +130,6 @@ impl Index {
     fn clear(&mut self) {
         self.entries = BTreeMap::new();
         self.changed = false;
-    }
-
-    fn load(&mut self) -> Result<(), IndexError> {
-        self.clear();
-        let file = self.open_index_file()?;
-
-        if let Some(mut f) = file {
-            let mut reader = Checksum::new(&mut f);
-            let count = self.read_header(&mut reader)?;
-            self.read_entries(&mut reader, count)?;
-            reader.verify_checksum()?;
-        }
-
-        Ok(())
     }
 
     fn open_index_file(&self) -> Result<Option<File>, IndexError> {
@@ -257,6 +260,7 @@ where
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
     ctime: u32,
     ctime_nsec: u32,
@@ -274,7 +278,7 @@ pub struct Entry {
 }
 
 impl Entry {
-    pub fn new(path: &OsStr, oid: ObjectId, stat: Metadata) -> Self {
+    pub fn new(path: &impl AsRef<OsStr>, oid: ObjectId, stat: Metadata) -> Self {
         let ctime = stat.ctime() as u32;
         let ctime_nsec = stat.ctime_nsec() as u32;
         let mtime = stat.mtime() as u32;
@@ -290,9 +294,9 @@ impl Entry {
             REGULAR_MODE
         };
 
-        let flags = u16::min(path.as_bytes().len() as u16, MAX_PATH_SIZE);
+        let flags = u16::min(path.as_ref().as_bytes().len() as u16, MAX_PATH_SIZE);
 
-        let path = path.to_owned();
+        let path = path.as_ref().to_owned();
 
         Self {
             ctime,
@@ -309,6 +313,15 @@ impl Entry {
             flags,
             path,
         }
+    }
+
+    pub fn parent_directories(&self) -> Vec<PathBuf> {
+        let path = PathBuf::from(&self.path);
+        let mut directories: Vec<_> = path.ancestors().map(|c| c.to_owned()).skip(1).collect();
+
+        directories.pop();
+
+        directories.into_iter().rev().collect()
     }
 
     pub fn bytes(&self) -> Vec<u8> {
@@ -393,5 +406,20 @@ impl Entry {
             flags,
             path,
         })
+    }
+
+    /// Get a reference to the entry's path.
+    pub fn path(&self) -> &OsString {
+        &self.path
+    }
+
+    /// Get a reference to the entry's mode.
+    pub fn mode(&self) -> u32 {
+        self.mode
+    }
+
+    /// Get a reference to the entry's ObjectId.
+    pub fn oid(&self) -> &ObjectId {
+        &self.oid
     }
 }
