@@ -68,14 +68,8 @@ impl Lockfile {
         Ok(true)
     }
 
-    pub fn lock(&mut self) -> Result<&mut File, LockfileError> {
+    fn lock(&mut self) -> Result<&mut File, LockfileError> {
         self.lock.as_mut().ok_or(LockfileError::StaleLock)
-    }
-
-    pub fn write(&mut self, contents: &[u8]) -> Result<(), LockfileError> {
-        self.lock()?.write_all(contents)?;
-
-        Ok(())
     }
 
     pub fn commit(&mut self) -> Result<(), LockfileError> {
