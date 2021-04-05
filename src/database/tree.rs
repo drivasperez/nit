@@ -4,7 +4,7 @@ use std::{os::unix::prelude::MetadataExt, path::PathBuf};
 use thiserror::Error;
 
 use crate::database::{Object, ObjectId};
-use crate::index::Entry;
+use crate::index::entry::Entry;
 
 use super::DatabaseError;
 
