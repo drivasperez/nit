@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeMap,
+    convert::TryInto,
     ffi::{OsStr, OsString},
     fs::{File, Metadata},
     io::{Read, Write},
@@ -186,7 +187,10 @@ impl Index {
                 entry.extend_from_slice(&reader.read(ENTRY_BLOCK)?);
             }
 
-            self.store_entry(Entry::parse(entry)?);
+            println!("Bytes: {:?}", &entry);
+            let entry = Entry::parse(entry)?;
+            println!("Parsed: {:#?}", &entry);
+            self.store_entry(entry);
         }
 
         Ok(())
@@ -364,23 +368,16 @@ impl Entry {
     }
 
     pub fn parse(mut data: Vec<u8>) -> Result<Self, IndexError> {
-        let ctime = 0_u32;
-        let ctime_nsec = 0_u32;
-        let mtime = 0_u32;
-        let mtime_nsec = 0_u32;
-        let dev = 0_u32;
-        let ino = 0_u32;
-        let mode = 0_u32;
-        let uid = 0_u32;
-        let gid = 0_u32;
-        let size = 0_u32;
-
-        for item in &mut [
-            ctime, ctime_nsec, mtime, mtime_nsec, dev, ino, mode, uid, gid, size,
-        ] {
-            let arr: [u8; 4] = drain_to_array(&mut data);
-            *item = u32::from_be_bytes(arr);
-        }
+        let ctime = u32::from_be_bytes(drain_to_array(&mut data));
+        let ctime_nsec = u32::from_be_bytes(drain_to_array(&mut data));
+        let mtime = u32::from_be_bytes(drain_to_array(&mut data));
+        let mtime_nsec = u32::from_be_bytes(drain_to_array(&mut data));
+        let dev = u32::from_be_bytes(drain_to_array(&mut data));
+        let ino = u32::from_be_bytes(drain_to_array(&mut data));
+        let mode = u32::from_be_bytes(drain_to_array(&mut data));
+        let uid = u32::from_be_bytes(drain_to_array(&mut data));
+        let gid = u32::from_be_bytes(drain_to_array(&mut data));
+        let size = u32::from_be_bytes(drain_to_array(&mut data));
 
         let oid = drain_to_array(&mut data).into();
 
