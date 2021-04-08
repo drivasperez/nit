@@ -1,7 +1,6 @@
 use crate::{
     database::ObjectId,
     lockfile::{Lockfile, LockfileError},
-    utils::drain_to_array,
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -146,13 +145,16 @@ impl Index {
     }
 
     fn read_header<T: Read + Write>(&self, reader: &mut Checksum<T>) -> Result<usize, IndexError> {
-        let mut data = reader.read(HEADER_SIZE)?;
-        let signature: [u8; 4] = drain_to_array(&mut data);
-        let signature = std::str::from_utf8(&signature).map_err(|_| IndexError::BadHeader)?;
+        let data = reader.read(HEADER_SIZE)?;
+        let signature = std::str::from_utf8(&data[0..4]).map_err(|_| IndexError::BadHeader)?;
 
-        let version = u32::from_be_bytes(drain_to_array(&mut data));
+        let mut version = [0; 4];
+        version.clone_from_slice(&data[4..8]);
+        let version = u32::from_be_bytes(version);
 
-        let count = u32::from_be_bytes(drain_to_array(&mut data));
+        let mut count = [0; 4];
+        count.clone_from_slice(&data[8..12]);
+        let count = u32::from_be_bytes(count);
 
         if signature != SIGNATURE {
             return Err(IndexError::IncorrectSignature(signature.to_owned()));
