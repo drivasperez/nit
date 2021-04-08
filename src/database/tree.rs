@@ -1,19 +1,12 @@
 use std::{borrow::Cow, collections::BTreeMap, fs};
 use std::{ffi::OsString, os::unix::prelude::OsStrExt};
 use std::{os::unix::prelude::MetadataExt, path::PathBuf};
-use thiserror::Error;
 
 use crate::database::{Object, ObjectId};
 use crate::index::entry::Entry;
 
 use super::DatabaseError;
 
-#[derive(Debug, Error)]
-#[non_exhaustive]
-pub enum TreeError {
-    #[error("Couldn't write to database: {0}")]
-    CouldNotWrite(#[from] DatabaseError),
-}
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum EntryMode {
     Executable,
@@ -48,9 +41,9 @@ impl Tree {
         }
     }
 
-    pub fn traverse<F>(&mut self, func: &F) -> Result<ObjectId, TreeError>
+    pub fn traverse<F>(&mut self, func: &F) -> Result<ObjectId, DatabaseError>
     where
-        F: Fn(&Tree) -> Result<ObjectId, TreeError>,
+        F: Fn(&Tree) -> Result<ObjectId, DatabaseError>,
     {
         for entry in self.entries.values_mut() {
             if let TreeEntry::Tree(tree, oid) = entry {

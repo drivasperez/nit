@@ -28,10 +28,6 @@ enum Opt {
     Add { paths: Vec<String> },
 }
 
-fn store_file(pathname: &Path, ws: &Workspace) -> anyhow::Result<()> {
-    Ok(())
-}
-
 fn main() -> anyhow::Result<()> {
     let opt = Opt::from_args();
 
