@@ -4,8 +4,8 @@ use crate::{
     utils::drain_to_array,
 };
 use std::{
-    collections::BTreeMap,
-    ffi::OsString,
+    collections::{BTreeMap, HashMap, HashSet},
+    ffi::{OsStr, OsString},
     fs::{File, Metadata},
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -41,6 +41,7 @@ pub struct Index {
     pathname: PathBuf,
     lockfile: Lockfile,
     entries: BTreeMap<OsString, Entry>,
+    parents: HashMap<OsString, HashSet<OsString>>,
     changed: bool,
 }
 
@@ -55,6 +56,7 @@ impl Index {
             lockfile,
             pathname: path.as_ref().to_owned(),
             entries: BTreeMap::new(),
+            parents: HashMap::new(),
             changed: false,
         }
     }
@@ -63,7 +65,7 @@ impl Index {
         let path = path.into();
         let entry = Entry::new(&path, oid, metadata);
         self.discard_conflicts(&entry);
-        self.entries.insert(path, entry);
+        self.store_entry(entry);
         self.changed = true;
     }
 
@@ -125,7 +127,8 @@ impl Index {
     }
 
     fn clear(&mut self) {
-        self.entries = BTreeMap::new();
+        self.entries.clear();
+        self.parents.clear();
         self.changed = false;
     }
 
@@ -189,6 +192,12 @@ impl Index {
     }
 
     fn store_entry(&mut self, entry: Entry) {
+        for dirname in &entry.parent_directories() {
+            self.parents
+                .entry(dirname.into())
+                .or_insert_with(HashSet::new)
+                .insert(entry.path().to_owned());
+        }
         self.entries.insert(entry.path().clone(), entry);
     }
 
@@ -196,6 +205,30 @@ impl Index {
         for path in entry.parent_directories() {
             self.entries.remove(path.as_os_str());
         }
+
+        self.remove_children(entry.path());
+    }
+
+    fn remove_children(&mut self, path: &OsStr) {
+        if let Some(children) = self.parents.get(path) {
+            for child in children.clone() {
+                self.remove_entry(&child);
+            }
+        }
+    }
+
+    fn remove_entry(&mut self, path: &OsStr) -> Option<Entry> {
+        let entry = self.entries.get(path)?;
+
+        for dirname in &entry.parent_directories() {
+            let map = self.parents.get_mut(dirname.as_os_str())?;
+            map.remove(entry.path());
+            if map.is_empty() {
+                self.parents.remove(dirname.as_os_str());
+            }
+        }
+
+        self.entries.remove(path)
     }
 }
 
