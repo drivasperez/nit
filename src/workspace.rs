@@ -5,6 +5,8 @@ use std::{
 };
 use thiserror::Error;
 
+use crate::database::DatabaseError;
+
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum WorkspaceError {
@@ -12,6 +14,8 @@ pub enum WorkspaceError {
     IoError(#[from] std::io::Error),
     #[error("Couldn't get path: {0}")]
     Path(PathBuf),
+    #[error("Database issue")]
+    Database(#[from] DatabaseError),
 }
 
 pub struct Workspace {

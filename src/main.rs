@@ -28,6 +28,10 @@ enum Opt {
     Add { paths: Vec<String> },
 }
 
+fn store_file(pathname: &Path, ws: &Workspace) -> anyhow::Result<()> {
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let opt = Opt::from_args();
 
@@ -51,19 +55,41 @@ fn main() -> anyhow::Result<()> {
             let db = Database::new(git_path.join("objects"));
             let mut index = Index::new(&git_path.join("index"));
             index.load_for_update()?;
-            for path in paths {
-                let path = PathBuf::from_str(&path)?;
-                let path = std::fs::canonicalize(&path)?;
 
-                for pathname in ws.list_files(&path)? {
-                    let data = ws.read_file(&pathname)?;
-                    let stat = ws.stat_file(&pathname)?;
+            let paths: Result<Vec<_>, anyhow::Error> = paths
+                .into_iter()
+                .map(|path| {
+                    let path = PathBuf::from_str(&path)
+                        .with_context(|| format!("Couldn't add file: {:?}", &path))?;
+                    let path = std::fs::canonicalize(&path)
+                        .with_context(|| format!("Couldn't add file: {:?}", &path))?;
 
-                    let blob = Blob::new(data);
-                    let blob_oid = db.store(&blob)?;
-                    index.add(pathname, blob_oid, stat);
-                }
+                    let res = ws
+                        .list_files(&path)
+                        .with_context(|| format!("Couldn't add file: {:?}", &path))?;
+
+                    Ok(res)
+                })
+                .collect();
+
+            let paths: Vec<_> = paths?.into_iter().flatten().collect();
+
+            for pathname in paths {
+                let (data, stat) = ws
+                    .read_file(&pathname)
+                    .and_then(|data| {
+                        let stat = ws.stat_file(&pathname)?;
+                        Ok((data, stat))
+                    })
+                    .with_context(|| format!("Could not read from workspace: {:?}", &pathname))?;
+
+                let blob = Blob::new(data);
+                let blob_oid = db
+                    .store(&blob)
+                    .with_context(|| format!("Could not store file: {:?}", &pathname))?;
+                index.add(pathname, blob_oid, stat);
             }
+
             index.write_updates()?;
         }
         Opt::Commit { message } => {
