@@ -36,7 +36,7 @@ fn main() -> anyhow::Result<()> {
             let paths = paths.iter().map(Path::new).collect();
             add_files_to_repository(paths, &root_path)
         }
-        Opt::Commit { message } => create_commit(message),
+        Opt::Commit { message } => create_commit(message, &std::env::current_dir()?),
     }
 }
 
@@ -93,8 +93,7 @@ fn add_files_to_repository(paths: Vec<&Path>, root_path: &Path) -> anyhow::Resul
     Ok(())
 }
 
-fn create_commit(message: Option<String>) -> anyhow::Result<()> {
-    let root_path = std::env::current_dir()?;
+fn create_commit(message: Option<String>, root_path: &Path) -> anyhow::Result<()> {
     let mut repo = Repository::new(root_path.join(".git"));
 
     repo.index().load()?;
@@ -201,6 +200,23 @@ mod test {
         let entries: Vec<_> = repository.index().entries().keys().collect();
 
         assert_eq!(entries, vec!["hello.txt"]);
+        cleanup(&subdir).unwrap();
+    }
+
+    #[test]
+    fn makes_a_commit() {
+        let subdir = "commits";
+        let tmp_path = tmp_path(&subdir);
+
+        init(&subdir).unwrap();
+        let file_path = &tmp_path.join("hello.txt");
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all("Hello, world".as_bytes()).unwrap();
+
+        add_files_to_repository(vec![&file_path], &tmp_path).unwrap();
+
+        create_commit(Some("Commit message is here".to_owned()), &tmp_path).unwrap();
+
         cleanup(&subdir).unwrap();
     }
 }
