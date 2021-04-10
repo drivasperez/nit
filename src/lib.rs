@@ -20,3 +20,5 @@ pub enum Error {
     #[error("Ref error")]
     Ref(#[from] refs::RefError),
 }
+
+pub type Result<T, E = Error> = core::result::Result<T, E>;

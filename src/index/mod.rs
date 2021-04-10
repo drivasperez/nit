@@ -96,11 +96,7 @@ impl Index {
             self.lockfile.rollback()?;
         }
 
-        let has_lock = self.lockfile.hold_for_update()?;
-
-        if !has_lock {
-            panic!("Couldn't write updates")
-        };
+        self.lockfile.hold_for_update()?;
 
         let mut writer = Checksum::new(&mut self.lockfile);
 
