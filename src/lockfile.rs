@@ -19,6 +19,15 @@ pub enum LockfileError {
     StaleLock,
     #[error("Unexpected IO Error: {0}")]
     IoError(#[from] std::io::Error),
+    #[error(
+        "fatal: Unable to create '{0}': File exists.
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue."
+    )]
+    LockDenied(PathBuf),
 }
 
 // TODO: This API could be better. A call to hold_for_update() should return a struct with a write function.
@@ -44,7 +53,7 @@ impl Lockfile {
         }
     }
 
-    pub fn hold_for_update(&mut self) -> Result<bool, LockfileError> {
+    pub fn hold_for_update(&mut self) -> Result<(), LockfileError> {
         if self.lock.is_none() {
             let f = OpenOptions::new()
                 .read(true)
@@ -52,21 +61,19 @@ impl Lockfile {
                 .create_new(true)
                 .open(&self.lock_path)
                 .map_err(|e| match e.kind() {
-                    io::ErrorKind::NotFound => (LockfileError::MissingParent),
-                    io::ErrorKind::PermissionDenied => (LockfileError::NoPermission),
+                    io::ErrorKind::NotFound => LockfileError::MissingParent,
+                    io::ErrorKind::PermissionDenied => LockfileError::NoPermission,
+                    io::ErrorKind::AlreadyExists => {
+                        LockfileError::LockDenied(self.lock_path.clone())
+                    }
+
                     _ => LockfileError::IoError(e),
                 });
 
-            if let Err(LockfileError::IoError(e)) = f {
-                if e.kind() == io::ErrorKind::AlreadyExists {
-                    return Ok(false);
-                }
-            } else {
-                self.lock = Some(f?);
-            }
+            self.lock = Some(f?);
         }
 
-        Ok(true)
+        Ok(())
     }
 
     fn lock(&mut self) -> Result<&mut File, LockfileError> {
