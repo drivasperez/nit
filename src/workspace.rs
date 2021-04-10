@@ -85,7 +85,7 @@ impl Workspace {
 
     /// Get a file's metadata, based on a path relative to this workspace's base directory.
     pub fn stat_file<P: AsRef<Path>>(&self, path: P) -> Result<Metadata, WorkspaceError> {
-        let metadata = fs::metadata(&path)?;
+        let metadata = fs::metadata(&self.pathname.join(path))?;
         Ok(metadata)
     }
 }
@@ -95,20 +95,28 @@ mod test {
     use super::*;
     #[test]
     fn list_files() {
-        let ws = Workspace::new("../testnit");
+        let tmp_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tmp")
+            .join("workspace-list-files");
+        std::fs::create_dir_all(&tmp_path).unwrap();
+
+        std::fs::write(tmp_path.join("hello.txt"), "Hey world").unwrap();
+        std::fs::write(tmp_path.join("goodbye.txt"), "Hey world").unwrap();
+        std::fs::write(tmp_path.join("okay.txt"), "Hey world").unwrap();
+
+        std::fs::create_dir(tmp_path.join("a")).unwrap();
+        std::fs::create_dir(tmp_path.join("a").join("b")).unwrap();
+        std::fs::write(tmp_path.join("a").join("b").join("what.txt"), "what?").unwrap();
+
+        let ws = Workspace::new(&tmp_path);
 
         let entries = ws.list_files_in_root().unwrap();
 
         assert_eq!(
             entries,
-            vec![
-                "woop.txt",
-                "a/b/hello.txt",
-                "cool.rs",
-                "hi.c",
-                "COMMIT_MSG.txt",
-                "wap.json"
-            ]
+            vec!["a/b/what.txt", "goodbye.txt", "okay.txt", "hello.txt",]
         );
+
+        std::fs::remove_dir_all(&tmp_path).unwrap();
     }
 }
