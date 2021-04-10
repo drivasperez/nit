@@ -8,13 +8,13 @@ use crate::lockfile::LockfileError;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum ChecksumError {
-    #[error("Could not read index file: {0}")]
+    #[error("Could not read index file")]
     CouldNotReadFile(std::io::Error),
-    #[error("Could not write to index file: {0}")]
+    #[error("Could not write to index file")]
     CouldNotWriteFile(std::io::Error),
     #[error("Index contents did not match checksum")]
     BadChecksum,
-    #[error("Couldn't get lock on index: {0}")]
+    #[error("Couldn't get lock on index")]
     NoLock(#[from] LockfileError),
 }
 

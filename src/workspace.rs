@@ -10,7 +10,7 @@ use crate::database::DatabaseError;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum WorkspaceError {
-    #[error("Unexpected IO Error: {0}")]
+    #[error("Unexpected IO Error")]
     IoError(#[from] std::io::Error),
     #[error("Couldn't get path: {0}")]
     Path(PathBuf),
