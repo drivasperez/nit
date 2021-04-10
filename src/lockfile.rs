@@ -17,7 +17,7 @@ pub enum LockfileError {
     NoPermission,
     #[error("Lock was stale")]
     StaleLock,
-    #[error("Unexpected IO Error: {0}")]
+    #[error("Unexpected IO Error")]
     IoError(#[from] std::io::Error),
     #[error(
         "fatal: Unable to create '{0}': File exists.

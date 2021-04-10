@@ -7,11 +7,11 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum RefError {
-    #[error("Couldn't get lock: {0}")]
+    #[error("Couldn't get lock")]
     NoLock(#[from] LockfileError),
-    #[error("Couildn't write to lockfile: {0}")]
+    #[error("Couildn't write to lockfile")]
     CouldNotWrite(#[from] std::io::Error),
-    #[error("Couldn't get lockfile id: {0}")]
+    #[error("Couldn't get lockfile id")]
     BadObjectId(#[from] std::fmt::Error),
 }
 

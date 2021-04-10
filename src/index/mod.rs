@@ -21,13 +21,13 @@ use entry::Entry;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum IndexError {
-    #[error("Could not write to lockfile: {0}")]
+    #[error("Could not write to lockfile")]
     Lockfile(#[from] LockfileError),
-    #[error("Could not access index file: {0}")]
+    #[error("Could not access index file")]
     NoIndexFile(#[from] std::io::Error),
     #[error("Index's digest was uninitialised")]
     DigestError,
-    #[error("Error reading checksum: {0}")]
+    #[error("Error reading checksum")]
     InvalidChecksum(#[from] ChecksumError),
     #[error("Could not parse index header")]
     BadHeader,
