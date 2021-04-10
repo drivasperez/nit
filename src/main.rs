@@ -5,9 +5,9 @@ use nit::{
     database::{Author, Blob, Commit, Tree},
     repository::Repository,
 };
+use std::fs;
 use std::path::Path;
 use std::{env, io::Read};
-use std::{fs, path::PathBuf, str::FromStr};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -28,16 +28,20 @@ enum Opt {
 
 fn main() -> anyhow::Result<()> {
     let opt = Opt::from_args();
+    let root_path = std::env::current_dir()?;
 
     match opt {
-        Opt::Init { path } => init_repository(path),
-        Opt::Add { paths } => add_files_to_repository(paths),
+        Opt::Init { path } => init_repository(&path.as_ref()),
+        Opt::Add { paths } => {
+            let paths = paths.iter().map(Path::new).collect();
+            add_files_to_repository(paths, &root_path)
+        }
         Opt::Commit { message } => create_commit(message),
     }
 }
 
-fn init_repository(path: String) -> anyhow::Result<()> {
-    let root_path = fs::canonicalize(Path::new(&path))?;
+fn init_repository(path: &Path) -> anyhow::Result<()> {
+    let root_path = fs::canonicalize(Path::new(path))?;
     let git_path = root_path.join(".git");
     for &dir in ["objects", "refs"].iter() {
         fs::create_dir_all(git_path.join(dir))?;
@@ -51,17 +55,16 @@ fn init_repository(path: String) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn add_files_to_repository(paths: Vec<String>) -> anyhow::Result<()> {
-    let root_path = std::env::current_dir()?;
+fn add_files_to_repository(paths: Vec<&Path>, root_path: &Path) -> anyhow::Result<()> {
     let mut repo = Repository::new(root_path.join(".git"));
 
-    repo.index().load_for_update()?;
+    repo.index()
+        .load_for_update()
+        .context("Couldn't load for update")?;
 
     let paths: Result<Vec<_>, anyhow::Error> = paths
         .into_iter()
         .map(|path| {
-            let path = PathBuf::from_str(&path)
-                .with_context(|| format!("Couldn't add file: {:?}", &path))?;
             let path = std::fs::canonicalize(&path)
                 .with_context(|| format!("Couldn't add file: {:?}", &path))?;
 
@@ -77,20 +80,10 @@ fn add_files_to_repository(paths: Vec<String>) -> anyhow::Result<()> {
     let paths: Vec<_> = paths?.into_iter().flatten().collect();
 
     for pathname in paths {
-        let (stat, blob_oid) = repo
-            .workspace()
-            .read_file(&pathname)
-            .and_then(|data| {
-                let stat = repo.workspace().stat_file(&pathname)?;
-                Ok((data, stat))
-            })
-            .and_then(|(data, stat)| {
-                let blob = Blob::new(data);
-                let blob_oid = repo.database().store(&blob)?;
-
-                Ok((stat, blob_oid))
-            })
-            .with_context(|| format!("Could not read from workspace: {:?}", &pathname))?;
+        let data = repo.workspace().read_file(&pathname).context("No data")?;
+        let stat = repo.workspace().stat_file(&pathname).context("No stat")?;
+        let blob = Blob::new(data);
+        let blob_oid = repo.database().store(&blob).context("No oid")?;
 
         repo.index().add(pathname, blob_oid, stat);
     }
@@ -149,4 +142,65 @@ fn create_commit(message: Option<String>) -> anyhow::Result<()> {
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use std::{fs::File, io::prelude::*, path::PathBuf};
+
+    use super::*;
+
+    fn tmp_path(subdir: &dyn AsRef<Path>) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tmp")
+            .join(subdir.as_ref())
+    }
+
+    fn init(subdir: &dyn AsRef<Path>) -> anyhow::Result<()> {
+        std::fs::create_dir(tmp_path(subdir))?;
+        let path = tmp_path(subdir);
+        init_repository(&path)
+    }
+
+    fn cleanup(subdir: &dyn AsRef<Path>) -> anyhow::Result<()> {
+        let path = tmp_path(subdir);
+        std::fs::remove_dir_all(path)?;
+        Ok(())
+    }
+
+    #[test]
+    fn inits_a_repository() {
+        let subdir = "inits";
+        init(&subdir).unwrap();
+        let dirs: Vec<_> = std::fs::read_dir(tmp_path(&subdir).join(".git"))
+            .unwrap()
+            .map(|p| {
+                let p = p.unwrap();
+                p.file_name()
+            })
+            .collect();
+
+        assert_eq!(dirs, vec!["refs", "objects"]);
+
+        cleanup(&subdir).unwrap();
+    }
+
+    #[test]
+    fn adds_a_file_to_the_index() {
+        let subdir = "adds";
+        init(&subdir).unwrap();
+        let mut repository = Repository::new(tmp_path(&subdir).join(".git"));
+        let file_path = tmp_path(&subdir).join("hello.txt");
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all("Hello, world".as_bytes()).unwrap();
+
+        add_files_to_repository(vec![&file_path], &tmp_path(&subdir)).unwrap();
+
+        repository.index().load_for_update().unwrap();
+
+        let entries: Vec<_> = repository.index().entries().keys().collect();
+
+        assert_eq!(entries, vec!["hello.txt"]);
+        cleanup(&subdir).unwrap();
+    }
 }
