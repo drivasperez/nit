@@ -41,9 +41,9 @@ impl Tree {
         }
     }
 
-    pub fn traverse<F>(&mut self, func: &F) -> Result<ObjectId, DatabaseError>
+    pub fn traverse<F>(&mut self, func: &mut F) -> Result<ObjectId, DatabaseError>
     where
-        F: Fn(&Tree) -> Result<ObjectId, DatabaseError>,
+        F: FnMut(&Tree) -> Result<ObjectId, DatabaseError>,
     {
         for entry in self.entries.values_mut() {
             if let TreeEntry::Tree(tree, oid) = entry {

@@ -2,10 +2,8 @@ use anyhow::anyhow;
 use anyhow::Context;
 use chrono::Utc;
 use nit::{
-    database::{Author, Blob, Commit, Database, Tree},
-    index::Index,
-    refs::Refs,
-    workspace::Workspace,
+    database::{Author, Blob, Commit, Tree},
+    repository::Repository,
 };
 use std::path::Path;
 use std::{env, io::Read};
@@ -55,11 +53,9 @@ fn init_repository(path: String) -> anyhow::Result<()> {
 
 fn add_files_to_repository(paths: Vec<String>) -> anyhow::Result<()> {
     let root_path = std::env::current_dir()?;
-    let git_path = root_path.join(".git");
-    let ws = Workspace::new(root_path);
-    let db = Database::new(git_path.join("objects"));
-    let mut index = Index::new(&git_path.join("index"));
-    index.load_for_update()?;
+    let mut repo = Repository::new(root_path.join(".git"));
+
+    repo.index().load_for_update()?;
 
     let paths: Result<Vec<_>, anyhow::Error> = paths
         .into_iter()
@@ -69,7 +65,8 @@ fn add_files_to_repository(paths: Vec<String>) -> anyhow::Result<()> {
             let path = std::fs::canonicalize(&path)
                 .with_context(|| format!("Couldn't add file: {:?}", &path))?;
 
-            let res = ws
+            let res = repo
+                .workspace()
                 .list_files(&path)
                 .with_context(|| format!("Couldn't add file: {:?}", &path))?;
 
@@ -80,49 +77,44 @@ fn add_files_to_repository(paths: Vec<String>) -> anyhow::Result<()> {
     let paths: Vec<_> = paths?.into_iter().flatten().collect();
 
     for pathname in paths {
-        let (stat, blob_oid) = ws
+        let (stat, blob_oid) = repo
+            .workspace()
             .read_file(&pathname)
             .and_then(|data| {
-                let stat = ws.stat_file(&pathname)?;
+                let stat = repo.workspace().stat_file(&pathname)?;
                 Ok((data, stat))
             })
             .and_then(|(data, stat)| {
                 let blob = Blob::new(data);
-                let blob_oid = db.store(&blob)?;
+                let blob_oid = repo.database().store(&blob)?;
 
                 Ok((stat, blob_oid))
             })
             .with_context(|| format!("Could not read from workspace: {:?}", &pathname))?;
 
-        index.add(pathname, blob_oid, stat);
+        repo.index().add(pathname, blob_oid, stat);
     }
 
-    index.write_updates()?;
+    repo.index().write_updates()?;
 
     Ok(())
 }
 
 fn create_commit(message: Option<String>) -> anyhow::Result<()> {
     let root_path = std::env::current_dir()?;
-    let git_path = root_path.join(".git");
-    let db_path = git_path.join("objects");
-    let index_path = git_path.join("index");
+    let mut repo = Repository::new(root_path.join(".git"));
 
-    let db = Database::new(db_path);
-    let mut index = Index::new(index_path);
-    let refs = Refs::new(&git_path);
+    repo.index().load()?;
 
-    index.load()?;
-
-    let mut root = Tree::build(index.entries().values().cloned().collect());
-    root.traverse(&|tree| {
-        let oid = db.store(tree)?;
+    let mut root = Tree::build(repo.index().entries().values().cloned().collect());
+    root.traverse(&mut |tree| {
+        let oid = repo.database().store(tree)?;
         Ok(oid)
     })?;
 
-    let root_oid = db.store(&root)?;
+    let root_oid = repo.database().store(&root)?;
 
-    let parent = refs.read_head();
+    let parent = repo.refs().read_head();
     let name = env::var("GIT_AUTHOR_NAME")
         .context("Could not load GIT_AUTHOR_NAME environment variable")?;
     let email = env::var("GIT_AUTHOR_EMAIL")
@@ -140,9 +132,9 @@ fn create_commit(message: Option<String>) -> anyhow::Result<()> {
         .ok_or_else(|| anyhow!("No commit message, aborting"))?;
 
     let commit = Commit::new(parent.as_deref(), root_oid, author, msg);
-    let commit_oid = db.store(&commit)?;
+    let commit_oid = repo.database().store(&commit)?;
 
-    refs.update_head(&commit_oid)?;
+    repo.refs().update_head(&commit_oid)?;
 
     let root_msg = match parent {
         Some(_) => "",
