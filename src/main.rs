@@ -145,7 +145,10 @@ fn create_commit(message: Option<String>, root_path: &Path) -> anyhow::Result<()
 
 #[cfg(test)]
 mod test {
+    use std::os::unix::fs::PermissionsExt;
     use std::{fs::File, io::prelude::*, path::PathBuf};
+    const REGULAR_MODE: u32 = 0o100644;
+    const EXECUTABLE_MODE: u32 = 0o100755;
 
     use super::*;
 
@@ -197,9 +200,137 @@ mod test {
 
         repository.index().load_for_update().unwrap();
 
-        let entries: Vec<_> = repository.index().entries().keys().collect();
+        let entries: Vec<_> = repository
+            .index()
+            .entries()
+            .values()
+            .map(|entry| (entry.mode(), entry.path()))
+            .collect();
 
-        assert_eq!(entries, vec!["hello.txt"]);
+        assert_eq!(
+            entries,
+            vec![(REGULAR_MODE, &std::ffi::OsString::from("hello.txt"))]
+        );
+        cleanup(&subdir).unwrap();
+    }
+
+    #[test]
+    fn adds_an_executable_file_to_the_index() {
+        let subdir = "adds_executable";
+        init(&subdir).unwrap();
+        let mut repository = Repository::new(tmp_path(&subdir).join(".git"));
+        let file_path = tmp_path(&subdir).join("hello.txt");
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all("Hello, world".as_bytes()).unwrap();
+
+        // Set it to executable.
+        let mut permissions = file.metadata().unwrap().permissions();
+        permissions.set_mode(0o755);
+        file.set_permissions(permissions).unwrap();
+
+        add_files_to_repository(vec![&file_path], &tmp_path(&subdir)).unwrap();
+
+        repository.index().load_for_update().unwrap();
+
+        let entries: Vec<_> = repository
+            .index()
+            .entries()
+            .values()
+            .map(|entry| (entry.mode(), entry.path()))
+            .collect();
+
+        assert_eq!(
+            entries,
+            vec![(EXECUTABLE_MODE, &std::ffi::OsString::from("hello.txt"))]
+        );
+        cleanup(&subdir).unwrap();
+    }
+
+    #[test]
+    fn adds_multiple_files_to_index() {
+        let subdir = "adds_multiple";
+        init(&subdir).unwrap();
+        let mut repository = Repository::new(tmp_path(&subdir).join(".git"));
+
+        let file_path = tmp_path(&subdir).join("hello.txt");
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all("Hello, world".as_bytes()).unwrap();
+
+        let file_path_2 = tmp_path(&subdir).join("hohoho.txt");
+        let mut file = File::create(&file_path_2).unwrap();
+        file.write_all("Merry christmas!".as_bytes()).unwrap();
+
+        add_files_to_repository(vec![&file_path, &file_path_2], &tmp_path(&subdir)).unwrap();
+
+        repository.index().load_for_update().unwrap();
+
+        let entries: Vec<_> = repository
+            .index()
+            .entries()
+            .values()
+            .map(|entry| (entry.mode(), entry.path()))
+            .collect();
+
+        assert_eq!(
+            entries,
+            vec![
+                (REGULAR_MODE, &std::ffi::OsString::from("hello.txt")),
+                (REGULAR_MODE, &std::ffi::OsString::from("hohoho.txt"))
+            ]
+        );
+        cleanup(&subdir).unwrap();
+    }
+
+    #[test]
+    fn incrementally_add_files_to_index() {
+        let subdir = "adds_incrementally";
+        init(&subdir).unwrap();
+        let mut repository = Repository::new(tmp_path(&subdir).join(".git"));
+        let file_path = tmp_path(&subdir).join("hello.txt");
+
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all("Hello, world".as_bytes()).unwrap();
+        add_files_to_repository(vec![&file_path], &tmp_path(&subdir)).unwrap();
+
+        repository.index().load_for_update().unwrap();
+
+        let entries: Vec<_> = repository
+            .index()
+            .entries()
+            .values()
+            .map(|entry| (entry.mode(), entry.path()))
+            .collect();
+
+        assert_eq!(
+            entries,
+            vec![(REGULAR_MODE, &std::ffi::OsString::from("hello.txt"))]
+        );
+
+        // Add another file, reload and reread entries
+
+        let file_path_2 = tmp_path(&subdir).join("hohoho.txt");
+        let mut file = File::create(&file_path_2).unwrap();
+        file.write_all("Merry christmas!".as_bytes()).unwrap();
+
+        add_files_to_repository(vec![&file_path_2], &tmp_path(&subdir)).unwrap();
+
+        repository.index().load_for_update().unwrap();
+
+        let entries: Vec<_> = repository
+            .index()
+            .entries()
+            .values()
+            .map(|entry| (entry.mode(), entry.path()))
+            .collect();
+
+        assert_eq!(
+            entries,
+            vec![
+                (REGULAR_MODE, &std::ffi::OsString::from("hello.txt")),
+                (REGULAR_MODE, &std::ffi::OsString::from("hohoho.txt"))
+            ]
+        );
+
         cleanup(&subdir).unwrap();
     }
 
