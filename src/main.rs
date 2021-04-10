@@ -335,6 +335,53 @@ mod test {
     }
 
     #[test]
+    fn adds_a_directory_to_the_index() {
+        let subdir = "adds_dir";
+        let tmp_path = tmp_path(&subdir);
+
+        init(&subdir).unwrap();
+        let mut repository = Repository::new(tmp_path.join(".git"));
+
+        std::fs::create_dir(tmp_path.join("a")).unwrap();
+
+        let file_path = tmp_path.join("hello.txt");
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all("Hello, world".as_bytes()).unwrap();
+
+        let file_path_2 = tmp_path.join("hohoho.txt");
+        let mut file = File::create(&file_path_2).unwrap();
+        file.write_all("Merry christmas!".as_bytes()).unwrap();
+
+        let file_path_3 = tmp_path.join("a").join("b.txt");
+        let mut file = File::create(&file_path_3).unwrap();
+        file.write_all("bbbb".as_bytes()).unwrap();
+
+        let file_path_4 = tmp_path.join("a").join("c.txt");
+        let mut file = File::create(&file_path_4).unwrap();
+        file.write_all("cccc".as_bytes()).unwrap();
+
+        add_files_to_repository(vec![&tmp_path.join("a")], &tmp_path).unwrap();
+
+        repository.index().load_for_update().unwrap();
+
+        let entries: Vec<_> = repository
+            .index()
+            .entries()
+            .values()
+            .map(|entry| (entry.mode(), entry.path()))
+            .collect();
+
+        assert_eq!(
+            entries,
+            vec![
+                (REGULAR_MODE, &std::ffi::OsString::from("a/b.txt")),
+                (REGULAR_MODE, &std::ffi::OsString::from("a/c.txt"))
+            ]
+        );
+        cleanup(&subdir).unwrap();
+    }
+
+    #[test]
     fn makes_a_commit() {
         let subdir = "commits";
         let tmp_path = tmp_path(&subdir);
