@@ -382,6 +382,37 @@ mod test {
     }
 
     #[test]
+    fn fails_for_non_existent_files() {
+        let subdir = "non_existent";
+        let tmp_path = tmp_path(&subdir);
+
+        init(&subdir).unwrap();
+
+        assert!(add_files_to_repository(vec![&tmp_path.join("a")], &tmp_path).is_err());
+
+        cleanup(&subdir).unwrap();
+    }
+    #[test]
+    fn fails_for_unreadable_existent_files() {
+        let subdir = "unreadable";
+        let tmp_path = tmp_path(&subdir);
+
+        init(&subdir).unwrap();
+
+        let file = File::create(tmp_path.join("shhh.txt")).unwrap();
+
+        let mut permissions = file.metadata().unwrap().permissions();
+        let mode = permissions.mode();
+        // Set it to unreadable.
+        permissions.set_mode(mode & 0b1011111111);
+        file.set_permissions(permissions).unwrap();
+
+        // assert!(add_files_to_repository(vec![&tmp_path.join("shhh.txt")], &tmp_path).is_err());
+
+        cleanup(&subdir).unwrap();
+    }
+
+    #[test]
     fn makes_a_commit() {
         let subdir = "commits";
         let tmp_path = tmp_path(&subdir);
