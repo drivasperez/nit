@@ -4,7 +4,7 @@ use chrono::Utc;
 use nit::{
     database::{Author, Blob, Commit, Database, Tree},
     index::Index,
-    lockfile::Lockfile,
+    lockfile::LockfileError,
     refs::Refs,
     workspace::Workspace,
 };
@@ -44,14 +44,7 @@ fn main() -> anyhow::Result<()> {
     let opt = Opt::from_args();
     let root_path = std::env::current_dir()?;
 
-    handle_opt(opt, &root_path).or_else(|e| {
-        // If we broke due to lockfile error, clean it up?
-        // Is this right?
-        if let Some(nit::Error::Lockfile(_)) = e.downcast_ref() {
-            Lockfile::clean_up_lockfile(&root_path.join(".git").join("index"))?;
-        }
-        Err(e)
-    })
+    handle_opt(opt, &root_path)
 }
 
 fn init_repository(path: &Path) -> anyhow::Result<()> {
@@ -75,38 +68,50 @@ fn add_files_to_repository(paths: Vec<&Path>, root_path: &Path) -> anyhow::Resul
     let workspace = Workspace::new(&root_path);
     let database = Database::new(git_path.join("objects"));
 
-    index
-        .load_for_update()
-        .context("Couldn't load for update")?;
+    // Please, try-blocks, please.
+    (|| -> anyhow::Result<()> {
+        index
+            .load_for_update()
+            .context("Couldn't load for update")?;
 
-    let paths: Result<Vec<_>, anyhow::Error> = paths
-        .into_iter()
-        .map(|path| {
-            let path = std::fs::canonicalize(&path)
-                .with_context(|| format!("Couldn't add file: {:?}", &path))?;
+        let paths: Result<Vec<_>, anyhow::Error> = paths
+            .into_iter()
+            .map(|path| {
+                let path = std::fs::canonicalize(&path)
+                    .with_context(|| format!("Couldn't add file: {:?}", &path))?;
 
-            let res = workspace
-                .list_files(&path)
-                .with_context(|| format!("Couldn't add file: {:?}", &path))?;
+                let res = workspace
+                    .list_files(&path)
+                    .with_context(|| format!("Couldn't add file: {:?}", &path))?;
 
-            Ok(res)
-        })
-        .collect();
+                Ok(res)
+            })
+            .collect();
 
-    let paths: Vec<_> = paths?.into_iter().flatten().collect();
+        let paths: Vec<_> = paths?.into_iter().flatten().collect();
 
-    for pathname in paths {
-        let data = workspace.read_file(&pathname).context("No data")?;
-        let stat = workspace.stat_file(&pathname).context("No stat")?;
-        let blob = Blob::new(data);
-        let blob_oid = database.store(&blob).context("No oid")?;
+        for pathname in paths {
+            let data = workspace.read_file(&pathname).context("No data")?;
+            let stat = workspace.stat_file(&pathname).context("No stat")?;
+            let blob = Blob::new(data);
+            let blob_oid = database.store(&blob).context("No oid")?;
 
-        index.add(pathname, blob_oid, stat);
-    }
+            index.add(pathname, blob_oid, stat);
+        }
 
-    index.write_updates()?;
+        index.write_updates()?;
+        Ok(())
+    })()
+    .or_else(|e| {
+        // Cleanup lockfile if we had issues
+        if let Some(nit::Error::Lockfile(LockfileError::LockDenied(_))) = e.downcast_ref() {
+            // We couldn't get the lock, so leave it in place.
+        } else {
+            index.lockfile_mut().rollback()?;
+        }
 
-    Ok(())
+        Err(e)
+    })
 }
 
 fn create_commit(message: Option<String>, root_path: &Path) -> anyhow::Result<()> {
@@ -115,51 +120,63 @@ fn create_commit(message: Option<String>, root_path: &Path) -> anyhow::Result<()
     let database = Database::new(git_path.join("objects"));
     let refs = Refs::new(&git_path);
 
-    index.load()?;
+    (|| -> anyhow::Result<()> {
+        index.load()?;
 
-    let mut root = Tree::build(index.entries().values().cloned().collect());
-    root.traverse(&mut |tree| {
-        let oid = database.store(tree)?;
-        Ok(oid)
-    })?;
+        let mut root = Tree::build(index.entries().values().cloned().collect());
+        root.traverse(&mut |tree| {
+            let oid = database.store(tree)?;
+            Ok(oid)
+        })?;
 
-    let root_oid = database.store(&root)?;
+        let root_oid = database.store(&root)?;
 
-    let parent = refs.read_head();
-    let name = env::var("GIT_AUTHOR_NAME")
-        .context("Could not load GIT_AUTHOR_NAME environment variable")?;
-    let email = env::var("GIT_AUTHOR_EMAIL")
-        .context("Could not load GIT_AUTHOR_EMAIL environment variable")?;
+        let parent = refs.read_head();
+        let name = env::var("GIT_AUTHOR_NAME")
+            .context("Could not load GIT_AUTHOR_NAME environment variable")?;
+        let email = env::var("GIT_AUTHOR_EMAIL")
+            .context("Could not load GIT_AUTHOR_EMAIL environment variable")?;
 
-    let author = Author::new(name, email, Utc::now());
+        let author = Author::new(name, email, Utc::now());
 
-    let msg = message
-        .or_else(|| {
-            let mut msg = Vec::new();
-            std::io::stdin().read_to_end(&mut msg).ok()?;
-            let str = String::from_utf8(msg).ok()?;
-            Some(str)
-        })
-        .ok_or_else(|| anyhow!("No commit message, aborting"))?;
+        let msg = message
+            .or_else(|| {
+                let mut msg = Vec::new();
+                std::io::stdin().read_to_end(&mut msg).ok()?;
+                let str = String::from_utf8(msg).ok()?;
+                Some(str)
+            })
+            .ok_or_else(|| anyhow!("No commit message, aborting"))?;
 
-    let commit = Commit::new(parent.as_deref(), root_oid, author, msg);
-    let commit_oid = database.store(&commit)?;
+        let commit = Commit::new(parent.as_deref(), root_oid, author, msg);
+        let commit_oid = database.store(&commit)?;
 
-    refs.update_head(&commit_oid)?;
+        refs.update_head(&commit_oid)?;
 
-    let root_msg = match parent {
-        Some(_) => "",
-        None => "(root-commit) ",
-    };
+        let root_msg = match parent {
+            Some(_) => "",
+            None => "(root-commit) ",
+        };
 
-    println!(
-        "[{}{}] {}",
-        root_msg,
-        commit_oid,
-        commit.message().lines().next().unwrap_or("")
-    );
+        println!(
+            "[{}{}] {}",
+            root_msg,
+            commit_oid,
+            commit.message().lines().next().unwrap_or("")
+        );
 
-    Ok(())
+        Ok(())
+    })()
+    .or_else(|e| {
+        // Cleanup lockfile if we had issues
+        if let Some(nit::Error::Lockfile(LockfileError::LockDenied(_))) = e.downcast_ref() {
+            // We couldn't get the lock, so leave it in place.
+        } else {
+            index.lockfile_mut().rollback()?;
+        }
+
+        Err(e)
+    })
 }
 
 #[cfg(test)]
