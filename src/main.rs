@@ -2,8 +2,10 @@ use anyhow::anyhow;
 use anyhow::Context;
 use chrono::Utc;
 use nit::{
-    database::{Author, Blob, Commit, Tree},
-    repository::Repository,
+    database::{Author, Blob, Commit, Database, Tree},
+    index::Index,
+    refs::Refs,
+    workspace::Workspace,
 };
 use std::fs;
 use std::path::Path;
@@ -56,9 +58,12 @@ fn init_repository(path: &Path) -> anyhow::Result<()> {
 }
 
 fn add_files_to_repository(paths: Vec<&Path>, root_path: &Path) -> anyhow::Result<()> {
-    let mut repo = Repository::new(root_path.join(".git"));
+    let git_path = root_path.join(".git");
+    let mut index = Index::new(git_path.join("index"));
+    let workspace = Workspace::new(&root_path);
+    let database = Database::new(git_path.join("objects"));
 
-    repo.index()
+    index
         .load_for_update()
         .context("Couldn't load for update")?;
 
@@ -68,8 +73,7 @@ fn add_files_to_repository(paths: Vec<&Path>, root_path: &Path) -> anyhow::Resul
             let path = std::fs::canonicalize(&path)
                 .with_context(|| format!("Couldn't add file: {:?}", &path))?;
 
-            let res = repo
-                .workspace()
+            let res = workspace
                 .list_files(&path)
                 .with_context(|| format!("Couldn't add file: {:?}", &path))?;
 
@@ -80,33 +84,36 @@ fn add_files_to_repository(paths: Vec<&Path>, root_path: &Path) -> anyhow::Resul
     let paths: Vec<_> = paths?.into_iter().flatten().collect();
 
     for pathname in paths {
-        let data = repo.workspace().read_file(&pathname).context("No data")?;
-        let stat = repo.workspace().stat_file(&pathname).context("No stat")?;
+        let data = workspace.read_file(&pathname).context("No data")?;
+        let stat = workspace.stat_file(&pathname).context("No stat")?;
         let blob = Blob::new(data);
-        let blob_oid = repo.database().store(&blob).context("No oid")?;
+        let blob_oid = database.store(&blob).context("No oid")?;
 
-        repo.index().add(pathname, blob_oid, stat);
+        index.add(pathname, blob_oid, stat);
     }
 
-    repo.index().write_updates()?;
+    index.write_updates()?;
 
     Ok(())
 }
 
 fn create_commit(message: Option<String>, root_path: &Path) -> anyhow::Result<()> {
-    let mut repo = Repository::new(root_path.join(".git"));
+    let git_path = root_path.join(".git");
+    let mut index = Index::new(git_path.join("index"));
+    let database = Database::new(git_path.join("objects"));
+    let refs = Refs::new(&git_path);
 
-    repo.index().load()?;
+    index.load()?;
 
-    let mut root = Tree::build(repo.index().entries().values().cloned().collect());
+    let mut root = Tree::build(index.entries().values().cloned().collect());
     root.traverse(&mut |tree| {
-        let oid = repo.database().store(tree)?;
+        let oid = database.store(tree)?;
         Ok(oid)
     })?;
 
-    let root_oid = repo.database().store(&root)?;
+    let root_oid = database.store(&root)?;
 
-    let parent = repo.refs().read_head();
+    let parent = refs.read_head();
     let name = env::var("GIT_AUTHOR_NAME")
         .context("Could not load GIT_AUTHOR_NAME environment variable")?;
     let email = env::var("GIT_AUTHOR_EMAIL")
@@ -124,9 +131,9 @@ fn create_commit(message: Option<String>, root_path: &Path) -> anyhow::Result<()
         .ok_or_else(|| anyhow!("No commit message, aborting"))?;
 
     let commit = Commit::new(parent.as_deref(), root_oid, author, msg);
-    let commit_oid = repo.database().store(&commit)?;
+    let commit_oid = database.store(&commit)?;
 
-    repo.refs().update_head(&commit_oid)?;
+    refs.update_head(&commit_oid)?;
 
     let root_msg = match parent {
         Some(_) => "",
@@ -191,17 +198,19 @@ mod test {
     fn adds_a_file_to_the_index() {
         let subdir = "adds";
         init(&subdir).unwrap();
-        let mut repository = Repository::new(tmp_path(&subdir).join(".git"));
+        let git_dir = tmp_path(&subdir).join(".git");
+        let index_dir = git_dir.join("index");
+        let mut index = Index::new(index_dir);
+
         let file_path = tmp_path(&subdir).join("hello.txt");
         let mut file = File::create(&file_path).unwrap();
         file.write_all("Hello, world".as_bytes()).unwrap();
 
         add_files_to_repository(vec![&file_path], &tmp_path(&subdir)).unwrap();
 
-        repository.index().load_for_update().unwrap();
+        index.load_for_update().unwrap();
 
-        let entries: Vec<_> = repository
-            .index()
+        let entries: Vec<_> = index
             .entries()
             .values()
             .map(|entry| (entry.mode(), entry.path()))
@@ -218,7 +227,8 @@ mod test {
     fn adds_an_executable_file_to_the_index() {
         let subdir = "adds_executable";
         init(&subdir).unwrap();
-        let mut repository = Repository::new(tmp_path(&subdir).join(".git"));
+        let git_dir = tmp_path(&subdir).join(".git");
+        let mut index = Index::new(git_dir.join("index"));
         let file_path = tmp_path(&subdir).join("hello.txt");
         let mut file = File::create(&file_path).unwrap();
         file.write_all("Hello, world".as_bytes()).unwrap();
@@ -230,10 +240,9 @@ mod test {
 
         add_files_to_repository(vec![&file_path], &tmp_path(&subdir)).unwrap();
 
-        repository.index().load_for_update().unwrap();
+        index.load_for_update().unwrap();
 
-        let entries: Vec<_> = repository
-            .index()
+        let entries: Vec<_> = index
             .entries()
             .values()
             .map(|entry| (entry.mode(), entry.path()))
@@ -250,7 +259,8 @@ mod test {
     fn adds_multiple_files_to_index() {
         let subdir = "adds_multiple";
         init(&subdir).unwrap();
-        let mut repository = Repository::new(tmp_path(&subdir).join(".git"));
+        let git_dir = tmp_path(&subdir).join(".git");
+        let mut index = Index::new(git_dir.join("index"));
 
         let file_path = tmp_path(&subdir).join("hello.txt");
         let mut file = File::create(&file_path).unwrap();
@@ -262,10 +272,9 @@ mod test {
 
         add_files_to_repository(vec![&file_path, &file_path_2], &tmp_path(&subdir)).unwrap();
 
-        repository.index().load_for_update().unwrap();
+        index.load_for_update().unwrap();
 
-        let entries: Vec<_> = repository
-            .index()
+        let entries: Vec<_> = index
             .entries()
             .values()
             .map(|entry| (entry.mode(), entry.path()))
@@ -285,17 +294,17 @@ mod test {
     fn incrementally_add_files_to_index() {
         let subdir = "adds_incrementally";
         init(&subdir).unwrap();
-        let mut repository = Repository::new(tmp_path(&subdir).join(".git"));
+        let git_dir = tmp_path(&subdir).join(".git");
+        let mut index = Index::new(git_dir.join("index"));
         let file_path = tmp_path(&subdir).join("hello.txt");
 
         let mut file = File::create(&file_path).unwrap();
         file.write_all("Hello, world".as_bytes()).unwrap();
         add_files_to_repository(vec![&file_path], &tmp_path(&subdir)).unwrap();
 
-        repository.index().load_for_update().unwrap();
+        index.load_for_update().unwrap();
 
-        let entries: Vec<_> = repository
-            .index()
+        let entries: Vec<_> = index
             .entries()
             .values()
             .map(|entry| (entry.mode(), entry.path()))
@@ -314,10 +323,9 @@ mod test {
 
         add_files_to_repository(vec![&file_path_2], &tmp_path(&subdir)).unwrap();
 
-        repository.index().load_for_update().unwrap();
+        index.load_for_update().unwrap();
 
-        let entries: Vec<_> = repository
-            .index()
+        let entries: Vec<_> = index
             .entries()
             .values()
             .map(|entry| (entry.mode(), entry.path()))
@@ -338,9 +346,10 @@ mod test {
     fn adds_a_directory_to_the_index() {
         let subdir = "adds_dir";
         let tmp_path = tmp_path(&subdir);
+        let git_dir = tmp_path.join(".git");
+        let mut index = Index::new(git_dir.join("index"));
 
         init(&subdir).unwrap();
-        let mut repository = Repository::new(tmp_path.join(".git"));
 
         std::fs::create_dir(tmp_path.join("a")).unwrap();
 
@@ -362,10 +371,9 @@ mod test {
 
         add_files_to_repository(vec![&tmp_path.join("a")], &tmp_path).unwrap();
 
-        repository.index().load_for_update().unwrap();
+        index.load_for_update().unwrap();
 
-        let entries: Vec<_> = repository
-            .index()
+        let entries: Vec<_> = index
             .entries()
             .values()
             .map(|entry| (entry.mode(), entry.path()))

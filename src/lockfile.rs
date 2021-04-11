@@ -76,7 +76,9 @@ impl Lockfile {
     }
 
     fn lock(&mut self) -> Result<&mut File> {
-        self.lock.as_mut().ok_or(LockfileError::StaleLock.into())
+        self.lock
+            .as_mut()
+            .ok_or_else(|| LockfileError::StaleLock.into())
     }
 
     pub fn commit(&mut self) -> Result<()> {
