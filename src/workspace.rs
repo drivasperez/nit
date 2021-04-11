@@ -1,5 +1,4 @@
 use std::{
-    ffi::OsString,
     fs::{self, Metadata},
     path::{Path, PathBuf},
 };
@@ -12,6 +11,8 @@ use crate::Result;
 pub enum WorkspaceError {
     #[error("Couldn't get path: {0}")]
     Path(PathBuf),
+    #[error("Couldn't parse OsString")]
+    CouldNotParseString,
 }
 
 pub struct Workspace {
@@ -25,7 +26,7 @@ impl Workspace {
         }
     }
 
-    fn _list_files(&self, path: Option<&Path>) -> Result<Vec<OsString>> {
+    fn _list_files(&self, path: Option<&Path>) -> Result<Vec<String>> {
         let path = path.unwrap_or(&self.pathname);
 
         let res = if std::fs::metadata(path)?.is_dir() {
@@ -51,9 +52,11 @@ impl Workspace {
                 })
                 .collect()
         } else {
-            Ok(vec![crate::utils::diff_paths(path, &self.pathname)
+            let s = crate::utils::diff_paths(path, &self.pathname);
+            Ok(vec![s
                 .ok_or_else(|| WorkspaceError::Path(path.to_owned()))?
-                .as_os_str()
+                .to_str()
+                .ok_or(WorkspaceError::CouldNotParseString)?
                 .to_owned()])
         };
 
@@ -61,7 +64,7 @@ impl Workspace {
     }
 
     /// Lists all files in a path, relative to this workspace's base directory.
-    pub fn list_files<P>(&self, path: P) -> Result<Vec<OsString>>
+    pub fn list_files<P>(&self, path: P) -> Result<Vec<String>>
     where
         P: AsRef<Path>,
     {
@@ -69,7 +72,7 @@ impl Workspace {
     }
 
     /// Lists all files in a workspace's base directory.
-    pub fn list_files_in_root(&self) -> Result<Vec<OsString>> {
+    pub fn list_files_in_root(&self) -> Result<Vec<String>> {
         self._list_files(None)
     }
 

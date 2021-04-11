@@ -4,6 +4,7 @@ use std::{
     fs::{self, File},
     io::{self, Write},
     path::PathBuf,
+    string::FromUtf8Error,
 };
 
 use crate::utils::bytes_to_hex_string;
@@ -33,6 +34,8 @@ pub enum DatabaseError {
     NoParent(PathBuf),
     #[error("IO rror while writing: {0}")]
     CouldNotWrite(#[from] std::io::Error),
+    #[error(transparent)]
+    Utf8BadParse(FromUtf8Error),
 }
 #[derive(PartialEq, Clone)]
 pub struct ObjectId([u8; 20]);

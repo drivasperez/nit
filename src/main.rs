@@ -27,17 +27,29 @@ enum Opt {
     },
     /// Add file contents to the index
     Add { paths: Vec<String> },
+
+    /// Show the working tree status
+    Status,
 }
 
 fn handle_opt(opt: Opt, root_path: &Path) -> anyhow::Result<()> {
     match opt {
-        Opt::Init { path } => init_repository(&path.as_ref()),
+        Opt::Init { path } => init_repository(&path.as_ref())?,
         Opt::Add { paths } => {
             let paths = paths.iter().map(Path::new).collect();
-            add_files_to_repository(paths, &root_path)
+            add_files_to_repository(paths, &root_path)?;
         }
-        Opt::Commit { message } => create_commit(message, &std::env::current_dir()?),
-    }
+        Opt::Commit { message } => {
+            let msg = create_commit(message, &std::env::current_dir()?)?;
+            print!("{}", msg);
+        }
+        Opt::Status => {
+            let msg = get_repository_status(&root_path)?;
+            print!("{}", msg);
+        }
+    };
+
+    Ok(())
 }
 
 fn main() -> anyhow::Result<()> {
@@ -96,7 +108,7 @@ fn add_files_to_repository(paths: Vec<&Path>, root_path: &Path) -> anyhow::Resul
             let blob = Blob::new(data);
             let blob_oid = database.store(&blob).context("No oid")?;
 
-            index.add(pathname, blob_oid, stat);
+            index.add(&pathname, blob_oid, stat);
         }
 
         index.write_updates()?;
@@ -114,13 +126,26 @@ fn add_files_to_repository(paths: Vec<&Path>, root_path: &Path) -> anyhow::Resul
     })
 }
 
-fn create_commit(message: Option<String>, root_path: &Path) -> anyhow::Result<()> {
+fn get_repository_status(root_path: &Path) -> anyhow::Result<String> {
+    let workspace = Workspace::new(&root_path);
+    let status = workspace
+        .list_files_in_root()?
+        .iter()
+        .fold(String::new(), |mut acc, next| {
+            acc.push_str(&format!("?? {}\n", next));
+            acc
+        });
+
+    Ok(status)
+}
+
+fn create_commit(message: Option<String>, root_path: &Path) -> anyhow::Result<String> {
     let git_path = root_path.join(".git");
     let mut index = Index::new(git_path.join("index"));
     let database = Database::new(git_path.join("objects"));
     let refs = Refs::new(&git_path);
 
-    (|| -> anyhow::Result<()> {
+    (|| -> anyhow::Result<String> {
         index.load()?;
 
         let mut root = Tree::build(index.entries().values().cloned().collect());
@@ -158,14 +183,14 @@ fn create_commit(message: Option<String>, root_path: &Path) -> anyhow::Result<()
             None => "(root-commit) ",
         };
 
-        println!(
+        let msg = format!(
             "[{}{}] {}",
             root_msg,
             commit_oid,
             commit.message().lines().next().unwrap_or("")
         );
 
-        Ok(())
+        Ok(msg)
     })()
     .or_else(|e| {
         // Cleanup lockfile if we had issues
@@ -245,10 +270,7 @@ mod test {
             .map(|entry| (entry.mode(), entry.path()))
             .collect();
 
-        assert_eq!(
-            entries,
-            vec![(REGULAR_MODE, &std::ffi::OsString::from("hello.txt"))]
-        );
+        assert_eq!(entries, vec![(REGULAR_MODE, Path::new("hello.txt"))]);
         cleanup(&subdir).unwrap();
     }
 
@@ -277,10 +299,7 @@ mod test {
             .map(|entry| (entry.mode(), entry.path()))
             .collect();
 
-        assert_eq!(
-            entries,
-            vec![(EXECUTABLE_MODE, &std::ffi::OsString::from("hello.txt"))]
-        );
+        assert_eq!(entries, vec![(EXECUTABLE_MODE, Path::new("hello.txt"))]);
         cleanup(&subdir).unwrap();
     }
 
@@ -312,8 +331,8 @@ mod test {
         assert_eq!(
             entries,
             vec![
-                (REGULAR_MODE, &std::ffi::OsString::from("hello.txt")),
-                (REGULAR_MODE, &std::ffi::OsString::from("hohoho.txt"))
+                (REGULAR_MODE, Path::new("hello.txt")),
+                (REGULAR_MODE, Path::new("hohoho.txt"))
             ]
         );
         cleanup(&subdir).unwrap();
@@ -339,10 +358,7 @@ mod test {
             .map(|entry| (entry.mode(), entry.path()))
             .collect();
 
-        assert_eq!(
-            entries,
-            vec![(REGULAR_MODE, &std::ffi::OsString::from("hello.txt"))]
-        );
+        assert_eq!(entries, vec![(REGULAR_MODE, Path::new("hello.txt"))]);
 
         // Add another file, reload and reread entries
 
@@ -363,8 +379,8 @@ mod test {
         assert_eq!(
             entries,
             vec![
-                (REGULAR_MODE, &std::ffi::OsString::from("hello.txt")),
-                (REGULAR_MODE, &std::ffi::OsString::from("hohoho.txt"))
+                (REGULAR_MODE, Path::new("hello.txt")),
+                (REGULAR_MODE, Path::new("hohoho.txt"))
             ]
         );
 
@@ -411,8 +427,8 @@ mod test {
         assert_eq!(
             entries,
             vec![
-                (REGULAR_MODE, &std::ffi::OsString::from("a/b.txt")),
-                (REGULAR_MODE, &std::ffi::OsString::from("a/c.txt"))
+                (REGULAR_MODE, Path::new("a/b.txt")),
+                (REGULAR_MODE, Path::new("a/c.txt"))
             ]
         );
         cleanup(&subdir).unwrap();
@@ -463,6 +479,27 @@ mod test {
 
         create_commit(Some("Commit message is here".to_owned()), &tmp_path).unwrap();
 
+        cleanup(&subdir).unwrap();
+    }
+
+    #[test]
+    fn lists_untracked_files_in_name_order() {
+        let subdir = "commits_stuff";
+        let tmp_path = tmp_path(&subdir);
+
+        init(&subdir).unwrap();
+
+        let file_path = &tmp_path.join("hello.txt");
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all("Hello, world".as_bytes()).unwrap();
+
+        let file_path = &tmp_path.join("goodbye.txt");
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all("Hello, world".as_bytes()).unwrap();
+
+        let status = get_repository_status(&tmp_path).unwrap();
+
+        assert_eq!(status, "?? goodbye.txt\n?? hello.txt\n");
         cleanup(&subdir).unwrap();
     }
 }

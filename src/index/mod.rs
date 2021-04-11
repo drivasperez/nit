@@ -3,7 +3,6 @@ use crate::{database::ObjectId, lockfile::Lockfile, utils::drain_to_array};
 use crate::Result;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    ffi::{OsStr, OsString},
     fs::{File, Metadata},
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -34,8 +33,8 @@ pub enum IndexError {
 pub struct Index {
     pathname: PathBuf,
     lockfile: Lockfile,
-    entries: BTreeMap<OsString, Entry>,
-    parents: HashMap<OsString, HashSet<OsString>>,
+    entries: BTreeMap<PathBuf, Entry>,
+    parents: HashMap<PathBuf, HashSet<PathBuf>>,
     changed: bool,
 }
 
@@ -55,15 +54,14 @@ impl Index {
         }
     }
 
-    pub fn add(&mut self, path: impl Into<OsString>, oid: ObjectId, metadata: Metadata) {
-        let path = path.into();
-        let entry = Entry::new(&path, oid, metadata);
+    pub fn add(&mut self, path: &impl AsRef<Path>, oid: ObjectId, metadata: Metadata) {
+        let entry = Entry::new(&path.as_ref(), oid, metadata);
         self.discard_conflicts(&entry);
         self.store_entry(entry);
         self.changed = true;
     }
 
-    pub fn entries(&self) -> &BTreeMap<OsString, Entry> {
+    pub fn entries(&self) -> &BTreeMap<PathBuf, Entry> {
         &self.entries
     }
 
@@ -186,22 +184,22 @@ impl Index {
     fn store_entry(&mut self, entry: Entry) {
         for dirname in &entry.parent_directories() {
             self.parents
-                .entry(dirname.into())
+                .entry(dirname.to_owned())
                 .or_insert_with(HashSet::new)
                 .insert(entry.path().to_owned());
         }
-        self.entries.insert(entry.path().clone(), entry);
+        self.entries.insert(entry.path().to_owned(), entry);
     }
 
     fn discard_conflicts(&mut self, entry: &Entry) {
         for path in entry.parent_directories() {
-            self.entries.remove(path.as_os_str());
+            self.entries.remove(&path);
         }
 
         self.remove_children(entry.path());
     }
 
-    fn remove_children(&mut self, path: &OsStr) {
+    fn remove_children(&mut self, path: &Path) {
         if let Some(children) = self.parents.get(path) {
             for child in children.clone() {
                 self.remove_entry(&child);
@@ -209,14 +207,14 @@ impl Index {
         }
     }
 
-    fn remove_entry(&mut self, path: &OsStr) -> Option<Entry> {
+    fn remove_entry(&mut self, path: &Path) -> Option<Entry> {
         let entry = self.entries.get(path)?;
 
         for dirname in &entry.parent_directories() {
-            let map = self.parents.get_mut(dirname.as_os_str())?;
+            let map = self.parents.get_mut(dirname)?;
             map.remove(entry.path());
             if map.is_empty() {
-                self.parents.remove(dirname.as_os_str());
+                self.parents.remove(dirname);
             }
         }
 
@@ -264,10 +262,10 @@ mod test {
             oid,
         } = startup();
 
-        index.add("alice.txt", oid, stat);
+        index.add(&"alice.txt", oid, stat);
         assert_eq!(
-            vec!["alice.txt"],
-            index.entries().keys().cloned().collect::<Vec<OsString>>()
+            vec![Path::new("alice.txt")],
+            index.entries().keys().cloned().collect::<Vec<PathBuf>>()
         );
     }
 
@@ -279,14 +277,17 @@ mod test {
             oid,
         } = startup();
 
-        index.add("alice.txt", oid.clone(), stat.clone());
-        index.add("bob.txt", oid.clone(), stat.clone());
+        index.add(&"alice.txt", oid.clone(), stat.clone());
+        index.add(&"bob.txt", oid.clone(), stat.clone());
 
-        index.add("alice.txt/nested.txt", oid, stat);
+        index.add(&"alice.txt/nested.txt", oid, stat);
 
         assert_eq!(
-            vec!["alice.txt/nested.txt", "bob.txt"],
-            index.entries().keys().cloned().collect::<Vec<OsString>>()
+            vec!["alice.txt/nested.txt", "bob.txt"]
+                .into_iter()
+                .map(PathBuf::from)
+                .collect::<Vec<PathBuf>>(),
+            index.entries().keys().cloned().collect::<Vec<PathBuf>>()
         );
     }
 
@@ -298,14 +299,17 @@ mod test {
             oid,
         } = startup();
 
-        index.add("alice.txt", oid.clone(), stat.clone());
-        index.add("nested/bob.txt", oid.clone(), stat.clone());
+        index.add(&"alice.txt", oid.clone(), stat.clone());
+        index.add(&"nested/bob.txt", oid.clone(), stat.clone());
 
-        index.add("nested", oid, stat);
+        index.add(&"nested", oid, stat);
 
         assert_eq!(
-            vec!["alice.txt", "nested"],
-            index.entries().keys().cloned().collect::<Vec<OsString>>()
+            vec!["alice.txt", "nested"]
+                .into_iter()
+                .map(PathBuf::from)
+                .collect::<Vec<PathBuf>>(),
+            index.entries().keys().cloned().collect::<Vec<PathBuf>>()
         );
     }
 
@@ -317,16 +321,19 @@ mod test {
             oid,
         } = startup();
 
-        index.add("alice.txt", oid.clone(), stat.clone());
-        index.add("nested/bob.txt", oid.clone(), stat.clone());
-        index.add("nested/inner/claire.txt", oid.clone(), stat.clone());
-        index.add("nested/another_inner/eve.txt", oid.clone(), stat.clone());
+        index.add(&"alice.txt", oid.clone(), stat.clone());
+        index.add(&"nested/bob.txt", oid.clone(), stat.clone());
+        index.add(&"nested/inner/claire.txt", oid.clone(), stat.clone());
+        index.add(&"nested/another_inner/eve.txt", oid.clone(), stat.clone());
 
-        index.add("nested", oid, stat);
+        index.add(&"nested", oid, stat);
 
         assert_eq!(
-            vec!["alice.txt", "nested"],
-            index.entries().keys().cloned().collect::<Vec<OsString>>()
+            vec!["alice.txt", "nested"]
+                .into_iter()
+                .map(PathBuf::from)
+                .collect::<Vec<_>>(),
+            index.entries().keys().cloned().collect::<Vec<PathBuf>>()
         );
     }
 }

@@ -69,8 +69,10 @@ impl Tree {
 
     pub fn add_entry(&mut self, parents: Vec<PathBuf>, entry: Entry) {
         if parents.is_empty() {
-            self.entries
-                .insert(entry.path().clone(), TreeEntry::Object(entry));
+            self.entries.insert(
+                entry.path().as_os_str().to_owned(),
+                TreeEntry::Object(entry),
+            );
         } else {
             let tree = self
                 .entries

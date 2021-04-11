@@ -1,9 +1,9 @@
 use crate::utils::{drain_to_array, is_executable};
 use std::{
-    ffi::{OsStr, OsString},
+    ffi::OsString,
     fs::Metadata,
     os::unix::prelude::{MetadataExt, OsStrExt, OsStringExt},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use crate::database::ObjectId;
@@ -27,11 +27,11 @@ pub struct Entry {
     size: u32,
     oid: ObjectId,
     flags: u16,
-    path: OsString,
+    path: PathBuf,
 }
 
 impl Entry {
-    pub fn new(path: &impl AsRef<OsStr>, oid: ObjectId, stat: Metadata) -> Self {
+    pub fn new(path: &impl AsRef<Path>, oid: ObjectId, stat: Metadata) -> Self {
         let ctime = stat.ctime() as u32;
         let ctime_nsec = stat.ctime_nsec() as u32;
         let mtime = stat.mtime() as u32;
@@ -47,9 +47,9 @@ impl Entry {
             REGULAR_MODE
         };
 
-        let flags = u16::min(path.as_ref().as_bytes().len() as u16, MAX_PATH_SIZE);
-
         let path = path.as_ref().to_owned();
+
+        let flags = u16::min(path.as_os_str().as_bytes().len() as u16, MAX_PATH_SIZE);
 
         Self {
             ctime,
@@ -107,7 +107,7 @@ impl Entry {
 
         bytes.extend_from_slice(oid.bytes());
         bytes.extend_from_slice(&flags.to_be_bytes());
-        bytes.extend_from_slice(path.as_bytes());
+        bytes.extend_from_slice(path.as_os_str().as_bytes());
         bytes.extend_from_slice(b"\0");
 
         while bytes.len() % ENTRY_BLOCK != 0 {
@@ -135,7 +135,7 @@ impl Entry {
         let flags = u16::from_be_bytes(arr);
 
         let path: Vec<_> = data.into_iter().take_while(|&b| b != b'\0').collect();
-        let path = OsString::from_vec(path);
+        let path = PathBuf::from(OsString::from_vec(path));
 
         Ok(Self {
             ctime,
@@ -155,7 +155,7 @@ impl Entry {
     }
 
     /// Get a reference to the entry's path.
-    pub fn path(&self) -> &OsString {
+    pub fn path(&self) -> &Path {
         &self.path
     }
 
