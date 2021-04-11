@@ -4,6 +4,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
+use crate::Result;
+
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum RefError {
@@ -29,7 +31,7 @@ impl Refs {
         self.pathname.join("HEAD")
     }
 
-    pub fn update_head(&self, oid: &ObjectId) -> Result<(), RefError> {
+    pub fn update_head(&self, oid: &ObjectId) -> Result<()> {
         let mut lock = Lockfile::new(&self.head_path());
         lock.hold_for_update()?;
 

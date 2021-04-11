@@ -1,8 +1,6 @@
-use crate::{
-    database::ObjectId,
-    lockfile::{Lockfile, LockfileError},
-    utils::drain_to_array,
-};
+use crate::{database::ObjectId, lockfile::Lockfile, utils::drain_to_array};
+
+use crate::Result;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     ffi::{OsStr, OsString},
@@ -12,23 +10,19 @@ use std::{
 };
 use thiserror::Error;
 
-mod checksum;
+pub mod checksum;
 pub mod entry;
 
-use checksum::{Checksum, ChecksumError};
+use checksum::Checksum;
 use entry::Entry;
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum IndexError {
-    #[error("Could not write to lockfile")]
-    Lockfile(#[from] LockfileError),
     #[error("Could not access index file")]
     NoIndexFile(#[from] std::io::Error),
     #[error("Index's digest was uninitialised")]
     DigestError,
-    #[error("Error reading checksum")]
-    InvalidChecksum(#[from] ChecksumError),
     #[error("Could not parse index header")]
     BadHeader,
     #[error("Incorrect version, expected {}, got {0}", VERSION)]
@@ -73,7 +67,7 @@ impl Index {
         &self.entries
     }
 
-    pub fn load(&mut self) -> Result<(), IndexError> {
+    pub fn load(&mut self) -> Result<()> {
         self.clear();
         let file = self.open_index_file()?;
 
@@ -87,11 +81,11 @@ impl Index {
         Ok(())
     }
 
-    pub fn load_for_update(&mut self) -> Result<(), IndexError> {
+    pub fn load_for_update(&mut self) -> Result<()> {
         self.load()
     }
 
-    pub fn write_updates(&mut self) -> Result<(), IndexError> {
+    pub fn write_updates(&mut self) -> Result<()> {
         if !self.changed {
             self.lockfile.rollback()?;
         }
@@ -128,8 +122,8 @@ impl Index {
         self.changed = false;
     }
 
-    fn open_index_file(&self) -> Result<Option<File>, IndexError> {
-        match File::open(&self.pathname) {
+    fn open_index_file(&self) -> Result<Option<File>> {
+        let res: Result<_, IndexError> = match File::open(&self.pathname) {
             Ok(f) => Ok(Some(f)),
             Err(e) => {
                 if e.kind() == std::io::ErrorKind::NotFound {
@@ -138,10 +132,12 @@ impl Index {
                     Err(e.into())
                 }
             }
-        }
+        };
+
+        Ok(res?)
     }
 
-    fn read_header<T: Read + Write>(&self, reader: &mut Checksum<T>) -> Result<usize, IndexError> {
+    fn read_header<T: Read + Write>(&self, reader: &mut Checksum<T>) -> Result<usize> {
         let mut data = reader.read(HEADER_SIZE)?;
         let signature: [u8; 4] = drain_to_array(&mut data);
         let signature = std::str::from_utf8(&signature).map_err(|_| IndexError::BadHeader)?;
@@ -151,11 +147,11 @@ impl Index {
         let count = u32::from_be_bytes(drain_to_array(&mut data));
 
         if signature != SIGNATURE {
-            return Err(IndexError::IncorrectSignature(signature.to_owned()));
+            return Err(IndexError::IncorrectSignature(signature.to_owned()).into());
         }
 
         if version != VERSION {
-            return Err(IndexError::IncorrectVersion(version));
+            return Err(IndexError::IncorrectVersion(version).into());
         }
 
         Ok(count as usize)
@@ -165,7 +161,7 @@ impl Index {
         &mut self,
         reader: &mut Checksum<T>,
         count: usize,
-    ) -> Result<(), IndexError> {
+    ) -> Result<()> {
         // Entries are at least 64 bytes...
         const ENTRY_MIN_SIZE: usize = 64;
         // ...and are padded with null bytes to always have a length divisible by 8.

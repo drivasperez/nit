@@ -7,8 +7,7 @@ use std::{
 };
 
 use crate::database::ObjectId;
-
-use super::IndexError;
+use crate::Result;
 
 const MAX_PATH_SIZE: u16 = 0xfff;
 const REGULAR_MODE: u32 = 0o100644;
@@ -118,7 +117,7 @@ impl Entry {
         bytes
     }
 
-    pub fn parse(mut data: Vec<u8>) -> Result<Self, IndexError> {
+    pub fn parse(mut data: Vec<u8>) -> Result<Self> {
         let ctime = u32::from_be_bytes(drain_to_array(&mut data));
         let ctime_nsec = u32::from_be_bytes(drain_to_array(&mut data));
         let mtime = u32::from_be_bytes(drain_to_array(&mut data));

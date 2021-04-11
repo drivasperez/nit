@@ -5,7 +5,7 @@ use std::{os::unix::prelude::MetadataExt, path::PathBuf};
 use crate::database::{Object, ObjectId};
 use crate::index::entry::Entry;
 
-use super::DatabaseError;
+use crate::Result;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum EntryMode {
@@ -41,9 +41,9 @@ impl Tree {
         }
     }
 
-    pub fn traverse<F>(&mut self, func: &mut F) -> Result<ObjectId, DatabaseError>
+    pub fn traverse<F>(&mut self, func: &mut F) -> Result<ObjectId>
     where
-        F: FnMut(&Tree) -> Result<ObjectId, DatabaseError>,
+        F: FnMut(&Tree) -> Result<ObjectId>,
     {
         for entry in self.entries.values_mut() {
             if let TreeEntry::Tree(tree, oid) = entry {

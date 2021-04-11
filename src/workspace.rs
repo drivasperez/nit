@@ -5,17 +5,13 @@ use std::{
 };
 use thiserror::Error;
 
-use crate::database::DatabaseError;
+use crate::Result;
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum WorkspaceError {
-    #[error("Unexpected IO Error")]
-    IoError(#[from] std::io::Error),
     #[error("Couldn't get path: {0}")]
     Path(PathBuf),
-    #[error("Database issue")]
-    Database(#[from] DatabaseError),
 }
 
 pub struct Workspace {
@@ -29,7 +25,7 @@ impl Workspace {
         }
     }
 
-    fn _list_files(&self, path: Option<&Path>) -> Result<Vec<OsString>, WorkspaceError> {
+    fn _list_files(&self, path: Option<&Path>) -> Result<Vec<OsString>> {
         let path = path.unwrap_or(&self.pathname);
 
         let res = if std::fs::metadata(path)?.is_dir() {
@@ -65,7 +61,7 @@ impl Workspace {
     }
 
     /// Lists all files in a path, relative to this workspace's base directory.
-    pub fn list_files<P>(&self, path: P) -> Result<Vec<OsString>, WorkspaceError>
+    pub fn list_files<P>(&self, path: P) -> Result<Vec<OsString>>
     where
         P: AsRef<Path>,
     {
@@ -73,18 +69,18 @@ impl Workspace {
     }
 
     /// Lists all files in a workspace's base directory.
-    pub fn list_files_in_root(&self) -> Result<Vec<OsString>, WorkspaceError> {
+    pub fn list_files_in_root(&self) -> Result<Vec<OsString>> {
         self._list_files(None)
     }
 
     /// Read a file's contents into a Vec<u8>, based on a path relative to this workspace's base directory.
-    pub fn read_file<P: AsRef<Path>>(&self, path: P) -> Result<Vec<u8>, WorkspaceError> {
+    pub fn read_file<P: AsRef<Path>>(&self, path: P) -> Result<Vec<u8>> {
         let r = std::fs::read(&self.pathname.join(&path))?;
         Ok(r)
     }
 
     /// Get a file's metadata, based on a path relative to this workspace's base directory.
-    pub fn stat_file<P: AsRef<Path>>(&self, path: P) -> Result<Metadata, WorkspaceError> {
+    pub fn stat_file<P: AsRef<Path>>(&self, path: P) -> Result<Metadata> {
         let metadata = fs::metadata(&self.pathname.join(path))?;
         Ok(metadata)
     }

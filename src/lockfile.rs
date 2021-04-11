@@ -1,4 +1,5 @@
 use crate::utils::add_extension;
+use crate::Result;
 use std::io;
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -51,7 +52,7 @@ impl Lockfile {
         }
     }
 
-    pub fn hold_for_update(&mut self) -> Result<(), LockfileError> {
+    pub fn hold_for_update(&mut self) -> Result<()> {
         if self.lock.is_none() {
             let f = OpenOptions::new()
                 .read(true)
@@ -74,11 +75,11 @@ impl Lockfile {
         Ok(())
     }
 
-    fn lock(&mut self) -> Result<&mut File, LockfileError> {
-        self.lock.as_mut().ok_or(LockfileError::StaleLock)
+    fn lock(&mut self) -> Result<&mut File> {
+        self.lock.as_mut().ok_or(LockfileError::StaleLock.into())
     }
 
-    pub fn commit(&mut self) -> Result<(), LockfileError> {
+    pub fn commit(&mut self) -> Result<()> {
         let lock = self.lock.take().ok_or(LockfileError::StaleLock);
         drop(lock);
         std::fs::rename(&self.lock_path, &self.file_path)?;
@@ -86,21 +87,12 @@ impl Lockfile {
         Ok(())
     }
 
-    pub fn rollback(&mut self) -> Result<(), LockfileError> {
+    pub fn rollback(&mut self) -> Result<()> {
         let lock = self.lock.take().ok_or(LockfileError::StaleLock);
         drop(lock);
         std::fs::remove_file(&self.lock_path)?;
 
         Ok(())
-    }
-}
-
-impl From<LockfileError> for std::io::Error {
-    fn from(err: LockfileError) -> Self {
-        std::io::Error::new(
-            io::ErrorKind::Other,
-            format!("Could get lock for file: {}", err),
-        )
     }
 }
 
