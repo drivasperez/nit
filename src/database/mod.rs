@@ -7,6 +7,7 @@ use std::{
 };
 
 use crate::utils::bytes_to_hex_string;
+use crate::Result;
 
 use flate2::{write::ZlibEncoder, Compression};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
@@ -84,7 +85,7 @@ impl Database {
         }
     }
 
-    pub fn store<O: Object>(&self, object: &O) -> Result<ObjectId, DatabaseError> {
+    pub fn store<O: Object>(&self, object: &O) -> Result<ObjectId> {
         let mut content = Vec::new();
         let data = object.data();
         content.extend_from_slice(object.kind().as_bytes());
@@ -100,7 +101,7 @@ impl Database {
         Ok(oid)
     }
 
-    fn write_object(&self, oid: &ObjectId, content: &[u8]) -> Result<(), DatabaseError> {
+    fn write_object(&self, oid: &ObjectId, content: &[u8]) -> Result<()> {
         let hash = oid.as_str()?;
         let dir = &hash[0..2];
         let obj = &hash[2..];
