@@ -222,6 +222,11 @@ impl Index {
 
         self.entries.remove(path)
     }
+
+    /// Get a mutable reference to the index's lockfile.
+    pub fn lockfile_mut(&mut self) -> &mut Lockfile {
+        &mut self.lockfile
+    }
 }
 
 #[cfg(test)]
