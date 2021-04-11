@@ -96,6 +96,14 @@ impl Lockfile {
 
         Ok(())
     }
+
+    pub fn clean_up_lockfile(path: &impl AsRef<Path>) -> Result<()> {
+        let mut path = path.as_ref().to_owned();
+        add_extension(&mut path, "lock");
+        std::fs::remove_file(path)?;
+
+        Ok(())
+    }
 }
 
 impl Read for Lockfile {
