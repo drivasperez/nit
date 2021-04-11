@@ -4,6 +4,7 @@ use chrono::Utc;
 use nit::{
     database::{Author, Blob, Commit, Database, Tree},
     index::Index,
+    lockfile::Lockfile,
     refs::Refs,
     workspace::Workspace,
 };
@@ -28,10 +29,7 @@ enum Opt {
     Add { paths: Vec<String> },
 }
 
-fn main() -> anyhow::Result<()> {
-    let opt = Opt::from_args();
-    let root_path = std::env::current_dir()?;
-
+fn handle_opt(opt: Opt, root_path: &Path) -> anyhow::Result<()> {
     match opt {
         Opt::Init { path } => init_repository(&path.as_ref()),
         Opt::Add { paths } => {
@@ -40,6 +38,20 @@ fn main() -> anyhow::Result<()> {
         }
         Opt::Commit { message } => create_commit(message, &std::env::current_dir()?),
     }
+}
+
+fn main() -> anyhow::Result<()> {
+    let opt = Opt::from_args();
+    let root_path = std::env::current_dir()?;
+
+    handle_opt(opt, &root_path).or_else(|e| {
+        // If we broke due to lockfile error, clean it up?
+        // Is this right?
+        if let Some(nit::Error::Lockfile(_)) = e.downcast_ref() {
+            Lockfile::clean_up_lockfile(&root_path.join(".git").join("index"))?;
+        }
+        Err(e)
+    })
 }
 
 fn init_repository(path: &Path) -> anyhow::Result<()> {
