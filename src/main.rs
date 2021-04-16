@@ -7,6 +7,7 @@ use nit::{
     lockfile::LockfileError,
     refs::Refs,
     workspace::Workspace,
+    Status,
 };
 use std::fs;
 use std::path::Path;
@@ -127,19 +128,8 @@ fn add_files_to_repository(paths: Vec<&Path>, root_path: &Path) -> anyhow::Resul
 }
 
 fn get_repository_status(root_path: &Path) -> anyhow::Result<String> {
-    let workspace = Workspace::new(&root_path);
-    let mut index = Index::new(&root_path.join(".git").join("index"));
-    index.load_for_update()?;
-    let status = workspace
-        .list_files_in_root()?
-        .iter()
-        .filter(|&s| !index.is_tracked(s))
-        .fold(String::new(), |mut acc, next| {
-            acc.push_str(&format!("?? {}\n", next));
-            acc
-        });
-
-    Ok(status)
+    let status = Status::new(&root_path);
+    Ok(status.get()?)
 }
 
 fn create_commit(message: Option<String>, root_path: &Path) -> anyhow::Result<String> {
@@ -528,5 +518,51 @@ mod test {
 
         assert_eq!(status, "?? goodbye.txt\n");
         cleanup(&subdir).unwrap();
+    }
+
+    #[test]
+    fn lists_untracked_directories_instead_of_their_contents() {
+        let subdir = "lists_untracked_directories";
+        let tmp_path = tmp_path(&subdir);
+
+        init(&subdir).unwrap();
+
+        let file_path = &tmp_path.join("hello.txt");
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all("Hello, world".as_bytes()).unwrap();
+
+        let dir_path = tmp_path.join("nested");
+        let file_path = dir_path.join("extra.txt");
+        fs::create_dir_all(&dir_path).unwrap();
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(b"This is a nested file").unwrap();
+
+        let status = get_repository_status(&tmp_path).unwrap();
+
+        assert_eq!(status, "?? goodbye.txt\n?? nested/");
+    }
+
+    #[test]
+    fn lists_untracked_files_inside_tracked_directories() {
+        let subdir = "lists_untracked_files_inside_tracked_directories";
+        let tmp_path = tmp_path(&subdir);
+
+        init(&subdir).unwrap();
+
+        let dir_path = tmp_path.join("a/b/c");
+        fs::create_dir_all(&dir_path).unwrap();
+        let file_path = tmp_path.join("a/b/hello.txt");
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all("Hello, world".as_bytes()).unwrap();
+
+        add_files_to_repository(vec![&tmp_path], &tmp_path).unwrap();
+        create_commit(Some(String::from("msg")), &tmp_path).unwrap();
+
+        fs::write(tmp_path.join("a/outer.txt"), b"").unwrap();
+        fs::write(tmp_path.join("a/b/c/file.txt"), b"").unwrap();
+
+        let status = get_repository_status(&tmp_path).unwrap();
+
+        assert_eq!(status, "?? a/b/c/\n?? a/outer.txt");
     }
 }

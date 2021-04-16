@@ -1,4 +1,11 @@
+use std::{
+    collections::BTreeSet,
+    path::{Path, PathBuf},
+};
+
+use index::Index;
 use thiserror::Error;
+use workspace::Workspace;
 pub mod database;
 pub mod index;
 pub mod lockfile;
@@ -36,4 +43,37 @@ impl From<crate::Error> for std::io::Error {
             format!("Could get lock for file: {}", err),
         )
     }
+}
+
+pub struct Status {
+    root_path: PathBuf,
+    untracked: BTreeSet<PathBuf>,
+}
+
+impl Status {
+    pub fn new(path: &impl AsRef<Path>) -> Self {
+        Self {
+            untracked: BTreeSet::new(),
+            root_path: path.as_ref().to_path_buf(),
+        }
+    }
+
+    pub fn get(&self) -> Result<String> {
+        let workspace = Workspace::new(&self.root_path);
+        let mut index = Index::new(&self.root_path.join(".git").join("index"));
+        index.load_for_update()?;
+
+        let status = workspace
+            .list_files_in_root()?
+            .iter()
+            .filter(|&s| !index.is_tracked(s))
+            .fold(String::new(), |mut acc, next| {
+                acc.push_str(&format!("?? {}\n", next));
+                acc
+            });
+
+        Ok(status)
+    }
+
+    fn scan_workspace(&self) {}
 }
