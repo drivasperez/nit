@@ -128,9 +128,12 @@ fn add_files_to_repository(paths: Vec<&Path>, root_path: &Path) -> anyhow::Resul
 
 fn get_repository_status(root_path: &Path) -> anyhow::Result<String> {
     let workspace = Workspace::new(&root_path);
+    let mut index = Index::new(&root_path.join(".git").join("index"));
+    index.load_for_update()?;
     let status = workspace
         .list_files_in_root()?
         .iter()
+        .filter(|&s| !index.is_tracked(s))
         .fold(String::new(), |mut acc, next| {
             acc.push_str(&format!("?? {}\n", next));
             acc
@@ -484,7 +487,7 @@ mod test {
 
     #[test]
     fn lists_untracked_files_in_name_order() {
-        let subdir = "commits_stuff";
+        let subdir = "lists_untracked_files";
         let tmp_path = tmp_path(&subdir);
 
         init(&subdir).unwrap();
@@ -500,6 +503,30 @@ mod test {
         let status = get_repository_status(&tmp_path).unwrap();
 
         assert_eq!(status, "?? goodbye.txt\n?? hello.txt\n");
+        cleanup(&subdir).unwrap();
+    }
+
+    #[test]
+    fn lists_files_as_untracked_if_not_in_the_index() {
+        let subdir = "lists_unindexed_files";
+        let tmp_path = tmp_path(&subdir);
+
+        init(&subdir).unwrap();
+
+        let file_path = &tmp_path.join("hello.txt");
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all("Hello, world".as_bytes()).unwrap();
+
+        add_files_to_repository(vec![&file_path], &tmp_path).unwrap();
+        create_commit(Some(String::from("Commit message")), &tmp_path).unwrap();
+
+        let file_path = &tmp_path.join("goodbye.txt");
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all("Goodbye".as_bytes()).unwrap();
+
+        let status = get_repository_status(&tmp_path).unwrap();
+
+        assert_eq!(status, "?? goodbye.txt\n");
         cleanup(&subdir).unwrap();
     }
 }

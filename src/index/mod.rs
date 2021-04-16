@@ -114,6 +114,10 @@ impl Index {
         Ok(())
     }
 
+    pub fn is_tracked(&self, path: &impl AsRef<Path>) -> bool {
+        self.entries.contains_key(path.as_ref())
+    }
+
     fn clear(&mut self) {
         self.entries.clear();
         self.parents.clear();
