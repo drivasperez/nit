@@ -567,4 +567,35 @@ mod test {
         assert_eq!(status, "?? a/b/c/\n?? a/outer.txt");
         cleanup(&subdir).unwrap();
     }
+
+    #[test]
+    fn does_not_list_empty_untracked_directories() {
+        let subdir = "does_not_list_empty_untracked_directories";
+        let tmp_path = tmp_path(&subdir);
+        init(&subdir).unwrap();
+
+        std::fs::create_dir(tmp_path.join("outer")).unwrap();
+        let status = get_repository_status(&tmp_path).unwrap();
+        assert_eq!(status, "");
+
+        cleanup(&subdir).unwrap();
+
+        init(&subdir).unwrap();
+    }
+
+    #[test]
+    fn lists_untracked_directories_that_indirectly_contain_files() {
+        let subdir = "lists_untracked_directories_that_indirectly_contain_files";
+        let tmp_path = tmp_path(&subdir);
+        init(&subdir).unwrap();
+
+        std::fs::create_dir_all(tmp_path.join("outer/inner")).unwrap();
+        std::fs::write(tmp_path.join("outer/inner/file.txt"), "").unwrap();
+        let status = get_repository_status(&tmp_path).unwrap();
+        assert_eq!(status, "?? outer/");
+
+        cleanup(&subdir).unwrap();
+
+        init(&subdir).unwrap();
+    }
 }
