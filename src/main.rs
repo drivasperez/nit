@@ -540,6 +540,7 @@ mod test {
         let status = get_repository_status(&tmp_path).unwrap();
 
         assert_eq!(status, "?? hello.txt\n?? nested/");
+        cleanup(&subdir).unwrap();
     }
 
     #[test]
@@ -564,5 +565,6 @@ mod test {
         let status = get_repository_status(&tmp_path).unwrap();
 
         assert_eq!(status, "?? a/b/c/\n?? a/outer.txt");
+        cleanup(&subdir).unwrap();
     }
 }
