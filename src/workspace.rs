@@ -26,7 +26,7 @@ impl Workspace {
         }
     }
 
-    fn _list_files(&self, path: Option<&Path>) -> Result<Vec<String>> {
+    fn _list_files(&self, path: Option<&Path>) -> Result<Vec<PathBuf>> {
         let path = path.unwrap_or(&self.pathname);
 
         let res = if std::fs::metadata(path)?.is_dir() {
@@ -55,8 +55,6 @@ impl Workspace {
             let s = crate::utils::diff_paths(path, &self.pathname);
             Ok(vec![s
                 .ok_or_else(|| WorkspaceError::Path(path.to_owned()))?
-                .to_str()
-                .ok_or(WorkspaceError::CouldNotParseString)?
                 .to_owned()])
         };
 
@@ -64,7 +62,7 @@ impl Workspace {
     }
 
     /// Lists all files in a path, relative to this workspace's base directory.
-    pub fn list_files<P>(&self, path: P) -> Result<Vec<String>>
+    pub fn list_files<P>(&self, path: P) -> Result<Vec<PathBuf>>
     where
         P: AsRef<Path>,
     {
@@ -72,7 +70,7 @@ impl Workspace {
     }
 
     /// Lists all files in a workspace's base directory.
-    pub fn list_files_in_root(&self) -> Result<Vec<String>> {
+    pub fn list_files_in_root(&self) -> Result<Vec<PathBuf>> {
         self._list_files(None)
     }
 
@@ -86,6 +84,10 @@ impl Workspace {
     pub fn stat_file<P: AsRef<Path>>(&self, path: P) -> Result<Metadata> {
         let metadata = fs::metadata(&self.pathname.join(path))?;
         Ok(metadata)
+    }
+
+    pub fn list_dir(&self, path: &impl AsRef<Path>) -> Result<Vec<PathBuf>> {
+        todo!()
     }
 }
 
@@ -112,7 +114,10 @@ mod test {
         let entries = ws.list_files_in_root().unwrap();
 
         assert_eq!(
-            entries,
+            entries
+                .iter()
+                .map(|p| p.to_str().unwrap())
+                .collect::<Vec<_>>(),
             vec!["a/b/what.txt", "goodbye.txt", "okay.txt", "hello.txt",]
         );
 

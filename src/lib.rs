@@ -67,6 +67,10 @@ impl Status {
             .list_files_in_root()?
             .iter()
             .filter(|&s| !index.is_tracked(s))
+            .map(|p| {
+                p.to_str()
+                    .expect("Couldn't convert PathBuf to String, odd.")
+            })
             .fold(String::new(), |mut acc, next| {
                 acc.push_str(&format!("?? {}\n", next));
                 acc
@@ -75,5 +79,26 @@ impl Status {
         Ok(status)
     }
 
-    fn scan_workspace(&self) {}
+    fn scan_workspace(&mut self, path: &impl AsRef<Path>) -> Result<()> {
+        let workspace = Workspace::new(&self.root_path);
+        let mut index = Index::new(&self.root_path.join(".git").join("index"));
+        index.load_for_update()?;
+
+        for dir in workspace.list_dir(path)? {
+            let is_directory = std::fs::metadata(path)?.is_dir();
+            if index.is_tracked(&dir) {
+                if is_directory {
+                    self.scan_workspace(&dir)?;
+                }
+            } else {
+                let dir = PathBuf::from(dir);
+                // if is_directory {
+                //     dir.push(std::path::MAIN_SEPARATOR);
+                // }
+                self.untracked.insert(dir);
+            }
+        }
+
+        Ok(())
+    }
 }
