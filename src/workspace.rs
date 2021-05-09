@@ -1,9 +1,11 @@
+use std::collections::HashMap;
 use std::{
     fs::{self, Metadata},
     path::{Path, PathBuf},
 };
 use thiserror::Error;
 
+use crate::utils::diff_paths;
 use crate::Result;
 
 #[derive(Debug, Error)]
@@ -17,12 +19,14 @@ pub enum WorkspaceError {
 
 pub struct Workspace {
     pathname: PathBuf,
+    ignored: Vec<&'static str>,
 }
 
 impl Workspace {
     pub fn new<P: Into<PathBuf>>(pathname: P) -> Self {
         Self {
             pathname: pathname.into(),
+            ignored: vec![".", "..", ".git"],
         }
     }
 
@@ -34,7 +38,7 @@ impl Workspace {
             let mut file_names = Vec::new();
             for dir in dirs {
                 let path = dir?.path();
-                if !&[".", "..", ".git"].iter().any(|&s| path.ends_with(s)) {
+                if !&self.ignored.iter().any(|&s| path.ends_with(s)) {
                     let file_name = path
                         .file_name()
                         .ok_or_else(|| WorkspaceError::Path(path.clone()))?
@@ -86,8 +90,21 @@ impl Workspace {
         Ok(metadata)
     }
 
-    pub fn list_dir(&self, path: &impl AsRef<Path>) -> Result<Vec<PathBuf>> {
-        todo!()
+    pub fn list_dir(&self, path: &impl AsRef<Path>) -> Result<HashMap<PathBuf, Metadata>> {
+        let path = self.pathname.join(path);
+        let entries = std::fs::read_dir(path)?;
+        let mut stats = HashMap::new();
+
+        for name in entries {
+            let name = name?;
+            dbg!(name.path());
+            let relative = diff_paths(name.path(), &self.pathname).unwrap();
+            if !self.ignored.iter().any(|&e| relative.starts_with(e)) {
+                stats.insert(relative, name.metadata()?);
+            }
+        }
+
+        Ok(stats)
     }
 }
 

@@ -128,7 +128,7 @@ fn add_files_to_repository(paths: Vec<&Path>, root_path: &Path) -> anyhow::Resul
 }
 
 fn get_repository_status(root_path: &Path) -> anyhow::Result<String> {
-    let status = Status::new(&root_path);
+    let mut status = Status::new(&root_path);
     Ok(status.get()?)
 }
 
@@ -492,7 +492,7 @@ mod test {
 
         let status = get_repository_status(&tmp_path).unwrap();
 
-        assert_eq!(status, "?? goodbye.txt\n?? hello.txt\n");
+        assert_eq!(status, "?? goodbye.txt\n?? hello.txt");
         cleanup(&subdir).unwrap();
     }
 
@@ -516,7 +516,7 @@ mod test {
 
         let status = get_repository_status(&tmp_path).unwrap();
 
-        assert_eq!(status, "?? goodbye.txt\n");
+        assert_eq!(status, "?? goodbye.txt");
         cleanup(&subdir).unwrap();
     }
 
@@ -539,7 +539,7 @@ mod test {
 
         let status = get_repository_status(&tmp_path).unwrap();
 
-        assert_eq!(status, "?? goodbye.txt\n?? nested/");
+        assert_eq!(status, "?? hello.txt\n?? nested/");
     }
 
     #[test]

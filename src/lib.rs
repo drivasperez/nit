@@ -47,7 +47,7 @@ impl From<crate::Error> for std::io::Error {
 
 pub struct Status {
     root_path: PathBuf,
-    untracked: BTreeSet<PathBuf>,
+    untracked: BTreeSet<String>,
 }
 
 impl Status {
@@ -58,43 +58,40 @@ impl Status {
         }
     }
 
-    pub fn get(&self) -> Result<String> {
-        let workspace = Workspace::new(&self.root_path);
-        let mut index = Index::new(&self.root_path.join(".git").join("index"));
-        index.load_for_update()?;
+    pub fn get(&mut self) -> Result<String> {
+        self.untracked.clear();
 
-        let status = workspace
-            .list_files_in_root()?
+        self.scan_workspace(None)?;
+
+        let status = self
+            .untracked
             .iter()
-            .filter(|&s| !index.is_tracked(s))
-            .map(|p| {
-                p.to_str()
-                    .expect("Couldn't convert PathBuf to String, odd.")
-            })
-            .fold(String::new(), |mut acc, next| {
-                acc.push_str(&format!("?? {}\n", next));
-                acc
-            });
+            .map(|s| format!("?? {}", s))
+            .collect::<Vec<_>>()
+            .join("\n");
 
         Ok(status)
     }
 
-    fn scan_workspace(&mut self, path: &impl AsRef<Path>) -> Result<()> {
+    fn scan_workspace(&mut self, path: Option<&Path>) -> Result<()> {
         let workspace = Workspace::new(&self.root_path);
         let mut index = Index::new(&self.root_path.join(".git").join("index"));
         index.load_for_update()?;
 
-        for dir in workspace.list_dir(path)? {
-            let is_directory = std::fs::metadata(path)?.is_dir();
+        let path = path.unwrap_or(&self.root_path);
+
+        for (dir, metadata) in workspace.list_dir(&path)? {
+            let is_directory = metadata.is_dir();
             if index.is_tracked(&dir) {
                 if is_directory {
-                    self.scan_workspace(&dir)?;
+                    self.scan_workspace(Some(&dir))?;
                 }
             } else {
-                let dir = PathBuf::from(dir);
-                // if is_directory {
-                //     dir.push(std::path::MAIN_SEPARATOR);
-                // }
+                let mut dir = dir.to_string_lossy().into_owned();
+
+                if is_directory {
+                    dir.push(std::path::MAIN_SEPARATOR);
+                }
                 self.untracked.insert(dir);
             }
         }
